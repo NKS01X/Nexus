@@ -1,0 +1,40 @@
+aegis_gateway:
+  host: "localhost"
+  port: 8081
+
+merchant_mcp:
+  host: "localhost"
+  port: 8082
+
+database:
+  dsn: "postgres://postgres:postgres@localhost:5432/aegis?sslmode=disable"
+
+razorpay:
+  key_id: "${RAZORPAY_KEY_ID}"
+  key_secret: "${RAZORPAY_KEY_SECRET}"
+
+razorpay_mcp:
+  binary_path: "./razorpay-mcp-server"
+
+policy:
+  spend_cap_paisa: 300000        # ₹3,000 total per buyer/session
+  per_sku_cap:
+    "SHOE-RUN-001": 2            # Max 2 of this SKU per buyer
+  velocity_cap:
+    max_requests: 10             # 10 requests
+    window_seconds: 60           # per minute
+  allowed_categories: ["footwear", "apparel"]
+  blocked_skus: []
+  geo_rules:
+    - country: "IN"
+      allowed: true
+      pincodes: ["560001", "560002"]
+
+audit:
+  retention_days: 90
+
+approval_queue:
+  default_ttl_hours: 24
+
+log:
+  level: "info"

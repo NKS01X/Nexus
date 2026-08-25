@@ -1,0 +1,28 @@
+# Binaries and build artifacts
+bin/
+*.exe
+*.exe;
+*.dll
+*.so
+*.dylib
+*.test
+coverage.out
+
+# Configuration files with local secrets
+config.yaml
+config.test.yaml
+
+# Environment variables
+.env
+*.env.*
+
+# Hackathon / Assistant temporary files
+Buildathon-Statements.md
+.claude/
+.claude.json
+
+# Agent configuration (local only, never commit)
+.opencode-rules/
+.opencode/
+AGENTS.md
+CLAUDE.md
