@@ -1,0 +1,32 @@
+<tr class="table-row">
+    <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900" x-text="Index"></td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(Timestamp)"></td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500" x-text="TraceID"></td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" x-text="BuyerID"></td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        <span class="status-badge" :class="{
+            'status-pending': Action === 'purchase_attempt',
+            'status-approved': Action === 'payment_executed',
+            'status-rejected': Action === 'purchase_rejected'
+        }" x-text="Action"></span>
+    </td>
+    <td class="px-6 py-4 text-sm text-gray-500">
+        <pre class="whitespace-pre-wrap text-xs" x-text="formatJSON(Response)"></pre>
+    </td>
+</tr>
+
+<script>
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        return d.toLocaleString();
+    }
+    function formatJSON(str) {
+        if (!str) return '-';
+        try {
+            return JSON.stringify(JSON.parse(str), null, 2);
+        } catch {
+            return str;
+        }
+    }
+</script>

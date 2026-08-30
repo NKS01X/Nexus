@@ -1,0 +1,39 @@
+<tr class="table-row" x-data="{ expanding: false }">
+    <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900" x-text="ID"></td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" x-text="BuyerID"></td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500" x-text="SessionID"></td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        <span x-text="PurchaseRequest.SKU"></span>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        ₹<span x-text="(PurchaseRequest.AmountPaisa / 100).toFixed(2)"></span>
+    </td>
+    <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate block" x-text="BuyerReasoning"></td>
+    <td class="px-6 py-4 whitespace-nowrap">
+        <span class="status-badge" :class="{
+            'status-pending': Status === 'PENDING',
+            'status-approved': Status === 'APPROVED',
+            'status-rejected': Status === 'REJECTED',
+            'status-expired': Status === 'EXPIRED'
+        }" x-text="Status"></span>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(CreatedAt)"></td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(ExpiresAt)"></td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+        <template x-if="Status === 'PENDING'">
+            <button @click="approve(ID)" class="text-green-600 hover:text-green-900 mr-3">Approve</button>
+            <button @click="reject(ID)" class="text-red-600 hover:text-red-900">Reject</button>
+        </template>
+        <template x-if="Status !== 'PENDING'">
+            <span class="text-gray-400">-</span>
+        </template>
+    </td>
+</tr>
+
+<script>
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        return d.toLocaleString();
+    }
+</script>
