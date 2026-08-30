@@ -36,14 +36,22 @@ set -a
 source .env
 set +a
 echo -e "      ${GREEN}✓ Credentials loaded from .env${RESET}"
-
 # 2. Database Services Startup
 echo -e "${WHITE}[2/7] Starting PostgreSQL database container...${RESET}"
-docker compose up -d postgres 2>/dev/null || docker-compose up -d postgres
+# Remove any stale container
+podman rm -f aegis-postgres 2>/dev/null || true
+# Start a fresh PostgreSQL container
+podman run -d --name aegis-postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=aegis \
+  -p 5432:5432 \
+  docker.io/library/postgres:15-alpine
+
 
 echo -ne "      Waiting for PostgreSQL readiness... "
 for i in {1..15}; do
-  if docker exec -i $(docker compose ps -q postgres 2>/dev/null || docker-compose ps -q postgres) psql -U postgres -d aegis -c "SELECT 1;" >/dev/null 2>&1; then
+  if podman exec -i aegis-postgres psql -U postgres -d aegis -c "SELECT 1;" >/dev/null 2>&1; then
     echo -e "${GREEN}Ready!${RESET}"
     break
   fi

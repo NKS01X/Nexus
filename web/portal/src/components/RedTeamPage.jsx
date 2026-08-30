@@ -1,6 +1,155 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useAuth, useToast } from '../App'
 import Navbar from './Navbar'
+import { Canvas, useFrame } from '@react-three/fiber'
+import { Float, Stars } from '@react-three/drei'
+import * as THREE from 'three'
+import gsap from 'gsap'
+import { LazyCanvas } from './CanvasWrapper'
+
+// 3D Attack Visualization
+function AttackVisualization({ isRunning, results }) {
+  const groupRef = useRef()
+  const particlesRef = useRef()
+  const count = 200
+  const positionsRef = useRef()
+
+  // Initialize refs
+  useEffect(() => {
+    const pos = new Float32Array(count * 3)
+    for (let i = 0; i < count; i++) {
+      const radius = 2 + Math.random() * 6
+      const angle = Math.random() * Math.PI * 2
+      const height = (Math.random() - 0.5) * 8
+      pos[i * 3] = Math.cos(angle) * radius
+      pos[i * 3 + 1] = height
+      pos[i * 3 + 2] = Math.sin(angle) * radius
+    }
+    positionsRef.current = pos
+  }, [])
+
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime()
+    if (groupRef.current) {
+      groupRef.current.rotation.y = t * 0.1
+    }
+    if (particlesRef.current && isRunning) {
+      particlesRef.current.rotation.y = t * 0.5
+      const positions = positionsRef.current
+      for (let i = 0; i < count; i++) {
+        const angle = Math.atan2(positions[i * 3 + 2], positions[i * 3]) + 0.01
+        const radius = Math.sqrt(positions[i * 3] ** 2 + positions[i * 3 + 2] ** 2)
+        positions[i * 3] = Math.cos(angle) * radius
+        positions[i * 3 + 2] = Math.sin(angle) * radius
+        positions[i * 3 + 1] += Math.sin(t * 3 + i) * 0.01
+      }
+      particlesRef.current.geometry.attributes.position.needsUpdate = true
+    }
+  })
+
+  const blockedCount = results?.summary?.blocked || 0
+  const vulnerableCount = results?.summary?.vulnerable || 0
+
+  return (
+    <group ref={groupRef}>
+      {/* Central core */}
+      <Float speed={2} rotationIntensity={0.2} floatIntensity={0.5}>
+        <mesh>
+          <icosahedronGeometry args={[1.5, 3]} />
+          <meshPhysicalMaterial
+            color={isRunning ? '#ef4444' : (vulnerableCount > 0 ? '#ef4444' : '#10b981')}
+            roughness={0.1}
+            metalness={0.8}
+            transparent
+            opacity={0.3}
+            transmission={0.5}
+          />
+        </mesh>
+
+        {/* Inner core */}
+        <mesh scale={0.6}>
+          <sphereGeometry args={[1, 32, 32]} />
+          <meshBasicMaterial
+            color={isRunning ? '#ef4444' : (vulnerableCount > 0 ? '#ef4444' : '#10b981')}
+            transparent
+            opacity={0.8}
+          />
+        </mesh>
+
+        {/* Wireframe overlay */}
+        <mesh>
+          <icosahedronGeometry args={[1.52, 2]} />
+          <meshBasicMaterial
+            color={isRunning ? '#ef4444' : '#10b981'}
+            wireframe
+            transparent
+            opacity={0.2}
+          />
+        </mesh>
+      </Float>
+
+      {/* Protective shield if no vulnerabilities */}
+      {!isRunning && vulnerableCount === 0 && blockedCount > 0 && (
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[3, 0.05, 16, 100]} />
+          <meshBasicMaterial color="#10b981" transparent opacity={0.5} />
+        </mesh>
+      )}
+
+      {/* Particles */}
+      <points ref={particlesRef}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            count={count}
+            array={positionsRef.current}
+            itemSize={3}
+          />
+        </bufferGeometry>
+        <pointsMaterial
+          size={0.06}
+          color={isRunning ? '#ef4444' : (vulnerableCount > 0 ? '#ef4444' : '#10b981')}
+          transparent
+          opacity={0.6}
+          sizeAttenuation
+          blending={THREE.AdditiveBlending}
+        />
+      </points>
+
+      {/* Stars */}
+      <Stars radius={60} depth={30} count={1000} factor={4} saturation={0} fade speed={0.3} />
+    </group>
+  )
+}
+
+// Camera controller
+function CameraController() {
+  const { camera } = useThree()
+  const mouseRef = useRef({ x: 0, y: 0 })
+  const targetRef = useRef({ x: 0, y: 0 })
+
+  useEffect(() => {
+    const handleMouseMove = (event) => {
+      mouseRef.current.x = (event.clientX / window.innerWidth) * 2 - 1
+      mouseRef.current.y = -(event.clientY / window.innerHeight) * 2 + 1
+    }
+    window.addEventListener('mousemove', handleMouseMove)
+    return () => window.removeEventListener('mousemove', handleMouseMove)
+  }, [])
+
+  useFrame(() => {
+    targetRef.current.x += (mouseRef.current.x * 2 - targetRef.current.x) * 0.02
+    targetRef.current.y += (mouseRef.current.y * 1 - targetRef.current.y) * 0.02
+
+    camera.position.x += (targetRef.current.x - camera.position.x) * 0.03
+    camera.position.y += (targetRef.current.y - camera.position.y) * 0.03
+    camera.lookAt(0, 0, 0)
+  })
+
+  return null
+}
+
+import { useThree } from '@react-three/fiber'
 
 export default function RedTeamPage() {
   const [running, setRunning] = useState(false)
@@ -14,9 +163,8 @@ export default function RedTeamPage() {
     try {
       const res = await authFetch('/api/redteam/run', { method: 'POST' })
       const data = await res.json()
-      
+
       if (!res.ok) {
-        // If it returns JSON with attacks we still display it even if HTTP status isn't 200
         if (data.attacks) {
           setResults(data)
           showToast('Attacks completed with vulnerabilities', 'error')
@@ -55,24 +203,25 @@ export default function RedTeamPage() {
         <div className="page-header">
           <div className="page-header-row">
             <div>
-              <h1 className="page-title">Red Team Attack Simulator</h1>
+              <h1 className="page-title">Purchase Safety Test Lab</h1>
               <p className="page-subtitle">
-                Test Aegis Policy Engine against adversarial attacks and prompt injections
+                Validate how your Merchant MCP handles unusual, adversarial, and injected purchase requests
               </p>
             </div>
             <div>
-              <button 
-                className="btn btn-primary" 
-                onClick={runAttacks} 
+              <button
+                className="btn btn-primary"
+                onClick={runAttacks}
                 disabled={running}
-                style={{ 
-                  background: 'linear-gradient(135deg, #ef4444, #b91c1c)', 
+                style={{
+                  background: 'linear-gradient(135deg, #ef4444, #b91c1c)',
                   borderColor: 'rgba(239, 68, 68, 0.4)',
                   boxShadow: '0 4px 16px rgba(239, 68, 68, 0.3)'
                 }}
               >
                 {running ? (
                   <>
+
                     <span className="spinner" style={{ width: 16, height: 16, borderTopColor: '#fff' }} />
                     Running Simulation...
                   </>
@@ -85,6 +234,24 @@ export default function RedTeamPage() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* 3D Visualization */}
+        <div style={{ width: '100%', height: '400px', marginBottom: '40px', borderRadius: '20px', overflow: 'hidden' }}>
+          <LazyCanvas
+            threshold={0.1}
+            rootMargin='100px'
+            canvasProps={{
+              camera: { position: [0, 0, 12], fov: 50, near: 0.1, far: 100 }
+            }}
+          >
+            <ambientLight intensity={0.3} />
+            <pointLight position={[5, 5, 5]} intensity={1} color="#ef4444" />
+            <pointLight position={[-5, -3, 3]} intensity={0.6} color="#10b981" />
+
+            <AttackVisualization isRunning={running} results={results} />
+            <CameraController />
+          </LazyCanvas>
         </div>
 
         {!results && !running && (
@@ -150,13 +317,13 @@ export default function RedTeamPage() {
                         <td>
                           <div style={{ marginBottom: '8px' }}>{attack.description}</div>
                           {attack.details && (
-                            <code style={{ 
-                              display: 'block', 
-                              fontSize: '11px', 
-                              color: 'var(--text-tertiary)', 
-                              background: 'rgba(0,0,0,0.2)', 
-                              padding: '8px', 
-                              borderRadius: '4px' 
+                            <code style={{
+                              display: 'block',
+                              fontSize: '11px',
+                              color: 'var(--text-tertiary)',
+                              background: 'rgba(0,0,0,0.2)',
+                              padding: '8px',
+                              borderRadius: '4px'
                             }}>
                               {attack.details}
                             </code>

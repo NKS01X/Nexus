@@ -16,21 +16,27 @@ export default function Navbar() {
     <nav ref={navRef} className={`navbar ${scrolled ? 'scrolled' : ''}`}>
       <div className="navbar-inner">
         <Link to="/" className="logo">
-          <div className="logo-icon">N</div>
-          <span className="logo-text">Nexus</span>
+          <div className="logo-icon">A</div>
+          <span className="logo-text">Aegis</span>
         </Link>
-        <div className="nav-links">
+        <div className="nav-links" aria-label="Primary navigation">
           <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}>
             Home
           </Link>
           <Link to="/merchants" className={`nav-link ${location.pathname === '/merchants' ? 'active' : ''}`}>
-            Merchants
+            Stores
           </Link>
           <Link to="/approvals" className={`nav-link ${location.pathname === '/approvals' ? 'active' : ''}`}>
-            Approvals
+            Review queue
           </Link>
           <Link to="/redteam" className={`nav-link ${location.pathname === '/redteam' ? 'active' : ''}`} style={{ color: location.pathname === '/redteam' ? '#ef4444' : '' }}>
-            Red Team
+            Test lab
+          </Link>
+          <Link to="/ai-purchase" className={`nav-link ${location.pathname === '/ai-purchase' ? 'active' : ''}`}>
+            AI checkout
+          </Link>
+          <Link to="/aegis-demo" className={`nav-link ${location.pathname === '/aegis-demo' ? 'active' : ''}`}>
+            Demo
           </Link>
         </div>
       </div>

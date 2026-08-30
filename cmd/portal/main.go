@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -22,7 +20,9 @@ import (
 	"github.com/razorpay/aegis/internal/pkg/config"
 	"github.com/razorpay/aegis/internal/pkg/logger"
 	"github.com/razorpay/aegis/internal/pkg/razorpay_mcp"
+	mcppkg "github.com/razorpay/aegis/internal/pkg/mcp"
 )
+
 
 func main() {
 	var configPath string
@@ -88,17 +88,26 @@ func main() {
 		catalogRepo,
 		log,
 	)
+    groqClient := service.NewGroqClient(cfg.Groq.APIKey, cfg.Groq.Model)
+    // Instantiate MCP service using the Gateway as the Aegis client.
+    merchantMCPService := service.NewMerchantMCPService(catalogRepo, orderRepo, gatewayService)
+    // Start internal MCP server.
+    internalMCP := mcppkg.NewMerchantServer(merchantMCPService, tenantService, catalogRepo, log)
+    go func() {
+        if err := internalMCP.Start(context.Background(), "localhost:8082"); err != nil && err != http.ErrServerClosed {
+            log.Error("internal MCP server error", "error", err)
+        }
+    }()
 
-	mux := http.NewServeMux()
+    mux := http.NewServeMux()
 
-	// Relay tenant MCP traffic to the Merchant MCP server so one public origin
-	// serves both the Portal API and MCP endpoints (single-service deployments).
-	mcpProxy, err := newMCPProxy(os.Getenv("MCP_INTERNAL_URL"))
-	if err != nil {
-		log.Error("configure mcp proxy", "error", err)
-		os.Exit(1)
-	}
-	mux.Handle("/mcp/", mcpProxy)
+    // Proxy external /mcp/ to internal MCP server.
+    mcpProxy, err := newMCPProxy(os.Getenv("MCP_INTERNAL_URL"))
+    if err != nil {
+        log.Error("configure mcp proxy", "error", err)
+        os.Exit(1)
+    }
+    mux.Handle("/mcp/", mcpProxy)
 
 	// Health endpoint (unauthenticated)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -195,6 +204,28 @@ func main() {
 		handleAuditEntries(w, r, auditService)
 	})
 
+    // AI Completion endpoint – Groq LLM
+    mux.HandleFunc("/api/ai/complete", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method != http.MethodPost {
+            http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+            return
+        }
+        var req struct {
+            Prompt string `json:"prompt"`
+        }
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+            http.Error(w, "invalid request", http.StatusBadRequest)
+            return
+        }
+        ctx := r.Context()
+        reply, err := groqClient.Completion(ctx, req.Prompt)
+        if err != nil {
+            http.Error(w, "groq error: "+err.Error(), http.StatusInternalServerError)
+            return
+        }
+        json.NewEncoder(w).Encode(map[string]string{"completion": reply})
+    })
+
 	mux.HandleFunc("/api/redteam/run", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -269,7 +300,17 @@ func main() {
 	})
 
 	// Serve static React app
-	mux.Handle("/", http.FileServer(http.Dir("./web/portal/dist")))
+	// Serve SPA static files with fallback to index.html
+staticFS := http.FileServer(http.Dir("./web/portal/dist"))
+mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+    // If the path corresponds to an existing file, serve it directly
+    if _, err := os.Stat("./web/portal/dist" + r.URL.Path); err == nil && !strings.HasSuffix(r.URL.Path, "/") {
+        staticFS.ServeHTTP(w, r)
+        return
+    }
+    // Fallback: serve index.html for client‑side routing
+    http.ServeFile(w, r, "./web/portal/dist/index.html")
+})
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", cfg.Portal.Host, cfg.Portal.Port),
@@ -332,18 +373,7 @@ func mcpBaseURL(cfg *config.Config) string {
 	return fmt.Sprintf("http://%s:%d", cfg.MerchantMCP.Host, cfg.MerchantMCP.Port)
 }
 
-// newMCPProxy builds the reverse proxy that forwards /mcp/* requests to the
-// internal Merchant MCP server. It defaults to loopback port 8082.
-func newMCPProxy(internalURL string) (http.Handler, error) {
-	if internalURL == "" {
-		internalURL = "http://localhost:8082"
-	}
-	target, err := url.Parse(internalURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse MCP_INTERNAL_URL: %w", err)
-	}
-	return httputil.NewSingleHostReverseProxy(target), nil
-}
+
 
 func handleProvisionMerchant(w http.ResponseWriter, r *http.Request, tenantService *service.TenantService, log *slog.Logger, cfg *config.Config) {
 	var req struct {
