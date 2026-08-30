@@ -5,11 +5,11 @@
 set -e
 
 DSN="${DATABASE_DSN:-postgres://postgres:postgres@localhost:5432/aegis?sslmode=disable}"
-DOCKER_PG=$(docker compose ps -q postgres 2>/dev/null)
+DOCKER_PG=$(podman compose ps -q postgres 2>/dev/null)
 
 run_sql() {
   if [ -n "$DOCKER_PG" ]; then
-    docker exec -i "$DOCKER_PG" psql -U postgres -d aegis -q -c "$1"
+    podman exec -i "$DOCKER_PG" psql -U postgres -d aegis -q -c "$1"
   else
     psql "$DSN" -q -c "$1"
   fi

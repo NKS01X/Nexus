@@ -117,7 +117,12 @@ go run cmd/redteam/main.go config.yaml
 
 ## 🚀 Quick Start Guide
 
-**Prerequisites:** Go 1.22+, PostgreSQL 15+, Docker
+**Groq LLM integration** – The portal now exposes an `/api/ai/complete` endpoint that forwards user prompts to the Groq API (model default `mixtral-8x7b-32768`). Set the environment variables `GROQ_API_KEY` (required) and optional `GROQ_MODEL` before running `./scripts/demo.sh`. The UI page **AI Purchase Demo** (`/ai-purchase`) showcases the suggestion flow and then lets you execute a purchase via the MCP proxy.
+
+**Podman Support** – The demo orchestration script now uses *Podman* instead of Docker. Ensure you have `podman` (v4+ includes the `compose` subcommand) installed. All Docker‑related commands in `scripts/demo.sh` and `scripts/demo-preload.sh` have been replaced with their Podman equivalents.
+
+
+**Prerequisites:** Go 1.22+, PostgreSQL 15+, Podman
 
 1. **Clone the Repository:**
 ```bash
@@ -130,6 +135,10 @@ Create a `.env` file at the root with your payment gateway credentials:
 ```env
 RAZORPAY_KEY_ID=your_key_id
 RAZORPAY_KEY_SECRET=your_key_secret
+# Groq LLM – add your test API key (required for AI suggestions)
+GROQ_API_KEY=your_groq_api_key
+# optional – choose a model (default: mixtral-8x7b-32768)
+GROQ_MODEL=mixtral-8x7b-32768
 ```
 
 3. **Start the Infrastructure:**
@@ -142,6 +151,7 @@ We provide an automated orchestration script that spins up PostgreSQL, compiles 
 - **Admin Portal (Merchant Dashboard):** [http://localhost:8084](http://localhost:8084) (Default Admin Key: `nexus_admin_default`)
 - **Approval Queue:** [http://localhost:8084/approvals](http://localhost:8084/approvals)
 - **Security Suite:** [http://localhost:8084/redteam](http://localhost:8084/redteam)
+- **AI Purchase Demo:** [http://localhost:8084/ai-purchase](http://localhost:8084/ai-purchase)
 - **Merchant MCP Endpoint:** `http://localhost:8082/mcp/{store_id}`
 
 ---

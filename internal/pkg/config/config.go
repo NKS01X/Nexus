@@ -10,6 +10,7 @@ import (
 
 // Config holds all configuration for the Aegis platform.
 type Config struct {
+	Groq GroqConfig `yaml:"groq"`
 	AegisGateway  AegisGatewayConfig  `yaml:"aegis_gateway"`
 	MerchantMCP   MerchantMCPConfig   `yaml:"merchant_mcp"`
 	Portal        PortalConfig        `yaml:"portal"`
@@ -104,8 +105,15 @@ type PortalConfig struct {
 
 // LogConfig holds logging configuration.
 type LogConfig struct {
-	Level string `yaml:"level"`
+    Level string `yaml:"level"`
 }
+
+// GroqConfig holds Groq LLM client configuration.
+type GroqConfig struct {
+    APIKey string `yaml:"api_key"`
+    Model  string `yaml:"model"`
+    }
+
 
 // Load loads configuration from a YAML file with environment variable overrides.
 // Environment variables take precedence, enabling portable deployments where the
@@ -134,9 +142,16 @@ func Load(path string) (*Config, error) {
 			cfg.Portal.Port = p
 		}
 	}
-	if publicURL := os.Getenv("MCP_PUBLIC_BASE_URL"); publicURL != "" {
-		cfg.MerchantMCP.PublicBaseURL = publicURL
-	}
+if publicURL := os.Getenv("MCP_PUBLIC_BASE_URL"); publicURL != "" {
+        cfg.MerchantMCP.PublicBaseURL = publicURL
+    }
+    // Groq configuration – read from env if set.
+    if apiKey := os.Getenv("GROQ_API_KEY"); apiKey != "" {
+        cfg.Groq.APIKey = apiKey
+    }
+    if model := os.Getenv("GROQ_MODEL"); model != "" {
+        cfg.Groq.Model = model
+    }
 	if keyID := os.Getenv("RAZORPAY_KEY_ID"); keyID != "" {
 		cfg.Razorpay.KeyID = keyID
 	}

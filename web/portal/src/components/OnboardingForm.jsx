@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useToast } from '../App'
 import ResultCard from './ResultCard'
 
@@ -12,6 +12,7 @@ const PLATFORMS = [
         <polyline points="9 22 9 12 15 12 15 22" />
       </svg>
     ),
+    color: '#95bf47',
   },
   {
     value: 'woocommerce',
@@ -22,6 +23,7 @@ const PLATFORMS = [
         <path d="M14.31 8l5.74 9.94M9.69 8h11.48M7.38 12l5.74-9.94M9.69 16L3.95 6.06M14.31 16H2.83M16.62 12l-5.74 9.94" />
       </svg>
     ),
+    color: '#9b5c8f',
   },
   {
     value: 'custom',
@@ -33,6 +35,7 @@ const PLATFORMS = [
         <line x1="14" y1="4" x2="10" y2="20" />
       </svg>
     ),
+    color: '#06b6d4',
   },
 ]
 
@@ -41,7 +44,25 @@ export default function OnboardingForm() {
   const [platform, setPlatform] = useState('shopify')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
+  const [formVisible, setFormVisible] = useState(false)
   const { showToast } = useToast()
+
+  // Animation for form entrance
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setTimeout(() => setFormVisible(true), 200)
+          }
+        })
+      },
+      { threshold: 0.2 }
+    )
+    const section = document.getElementById('onboard')
+    if (section) observer.observe(section)
+    return () => observer.disconnect()
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -79,10 +100,24 @@ export default function OnboardingForm() {
 
   return (
     <section className="onboarding-section" id="onboard">
-      <form className="onboarding-card" onSubmit={handleSubmit}>
-        <h2 className="onboarding-title">Connect Your Store</h2>
+      <form className={`onboarding-card ${formVisible ? 'visible' : ''}`} onSubmit={handleSubmit} style={{ position: 'relative', zIndex: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+          <div style={{
+            width: '48px', height: '48px', borderRadius: '14px',
+            background: 'linear-gradient(135deg, #a855f7, #06b6d4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(168, 85, 247, 0.4)',
+          }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="onboarding-title">Bring your store to AI buyers</h2>
+          </div>
+        </div>
         <p className="onboarding-subtitle">
-          Choose your platform and enter your store name to get a dedicated MCP endpoint.
+          Connect your commerce platform and get a dedicated Merchant MCP endpoint for your store.
         </p>
 
         <div className="form-group">
@@ -95,6 +130,7 @@ export default function OnboardingForm() {
             onChange={(e) => setName(e.target.value)}
             required
             id="store-name-input"
+            autoFocus
           />
         </div>
 
@@ -110,8 +146,9 @@ export default function OnboardingForm() {
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && setPlatform(p.value)}
                 id={`platform-tile-${p.value}`}
+                style={{ borderLeft: platform === p.value ? `4px solid ${p.color}` : 'none' }}
               >
-                <span className="platform-tile-icon">{p.icon}</span>
+                <span className="platform-tile-icon" style={{ color: p.color }}>{p.icon}</span>
                 {p.label}
               </div>
             ))}

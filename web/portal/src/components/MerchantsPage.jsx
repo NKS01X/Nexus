@@ -122,7 +122,7 @@ export default function MerchantsPage() {
     try {
       const res = await authFetch('/api/merchants')
       const data = await res.json()
-      setMerchants(data)
+      setMerchants(Array.isArray(data) ? data : [])
     } catch (err) {
       showToast(err.message || 'Failed to load merchants', 'error')
     } finally {
@@ -160,7 +160,7 @@ export default function MerchantsPage() {
             <div>
               <h1 className="page-title">Provisioned Merchants</h1>
               <p className="page-subtitle">
-                {merchants.length} merchant{merchants.length !== 1 ? 's' : ''} onboarded to Nexus
+                {merchants.length} store{merchants.length !== 1 ? 's' : ''} connected to Aegis Merchant MCP
               </p>
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
