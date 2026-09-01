@@ -1,0 +1,8 @@
+name = "nexus-portal"
+compatibility_date = "2026-08-01"
+pages_build_output_dir = "dist"
+
+# Origin for /api/* requests relayed by the Pages Function in functions/api/[[route]].js.
+# Points at the Cloudflare Tunnel hostname fronting the Portal Go server (:8084).
+[vars]
+API_BASE_URL = "https://portal.iamnikhil.dev"

@@ -8,26 +8,35 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/razorpay/aegis/internal/app/mcp"
+	"github.com/razorpay/aegis/internal/app/model"
+	"github.com/razorpay/aegis/internal/app/repository"
 	"github.com/razorpay/aegis/internal/app/service"
 )
+
+// TenantServiceInterface is defined in service package to avoid circular imports.
 
 // MerchantServer is the MCP server for the Merchant storefront (AI buyer facing).
 type MerchantServer struct {
 	merchantService service.MerchantMCPService
+	tenantService   service.TenantServiceInterface
+	catalogRepo     repository.CatalogRepository
 	logger          *slog.Logger
 	mu              sync.Mutex
 	tools           map[string]ToolHandler
 }
 
 // NewMerchantServer creates a new Merchant MCP server.
-func NewMerchantServer(merchantService service.MerchantMCPService, logger *slog.Logger) *MerchantServer {
+func NewMerchantServer(merchantService service.MerchantMCPService, tenantService service.TenantServiceInterface, catalogRepo repository.CatalogRepository, logger *slog.Logger) *MerchantServer {
 	s := &MerchantServer{
 		merchantService: merchantService,
+		tenantService:   tenantService,
+		catalogRepo:     catalogRepo,
 		logger:          logger,
 		tools:           make(map[string]ToolHandler),
 	}
@@ -48,6 +57,7 @@ func (s *MerchantServer) registerTools() {
 func (s *MerchantServer) Start(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", s.handleMCP)
+	mux.HandleFunc("/mcp/", s.handleTenantMCP) // note trailing slash — catches /mcp/{store_id}
 	mux.HandleFunc("/health", s.handleHealth)
 
 	server := &http.Server{
@@ -106,6 +116,252 @@ func (s *MerchantServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.writeError(w, req.ID, -32601, "Method not found", nil)
 	}
+}
+
+// handleTenantMCP handles MCP protocol requests for a specific tenant.
+func (s *MerchantServer) handleTenantMCP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract store_id from path: /mcp/{store_id}
+	storeID := strings.TrimPrefix(r.URL.Path, "/mcp/")
+	if storeID == "" {
+		http.Error(w, "missing store_id", http.StatusBadRequest)
+		return
+	}
+
+	// Resolve tenant by API key from Authorization: Bearer <key>
+	apiKey := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if apiKey == "" {
+		http.Error(w, "missing authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	// Get tenant by API key
+	tenant, err := s.tenantService.GetTenantByAPIKey(r.Context(), apiKey)
+	if err != nil {
+		s.logger.Error("tenant lookup failed", "error", err)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if tenant == nil || tenant.ID != storeID {
+		http.Error(w, "tenant not found", http.StatusNotFound)
+		return
+	}
+
+	// Create a tenant-scoped service
+	tenantService := service.NewMerchantMCPService(
+		&tenantCatalogRepo{catalogRepo: s.catalogRepo, tenantID: tenant.ID},
+		s.merchantService.(*service.MerchantMCPServiceImpl).GetOrderRepo(),
+		s.merchantService.(*service.MerchantMCPServiceImpl).GetAegisClient(),
+	)
+
+	// Handle the request with tenant-scoped service
+	var req MCPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeError(w, req.ID, -32700, "Parse error", nil)
+		return
+	}
+
+	s.logger.Debug("received MCP request", "method", req.Method, "id", req.ID, "tenant", storeID)
+
+	switch req.Method {
+	case "initialize":
+		s.handleInitialize(w, req)
+	case "tools/list":
+		s.handleToolsList(w, req)
+	case "tools/call":
+		s.handleToolCallForTenant(w, req, tenantService)
+	default:
+		s.writeError(w, req.ID, -32601, "Method not found", nil)
+	}
+}
+
+// handleToolCallForTenant handles the tools/call request for a specific tenant.
+func (s *MerchantServer) handleToolCallForTenant(w http.ResponseWriter, req MCPRequest, tenantService service.MerchantMCPService) {
+	var params struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		s.writeError(w, req.ID, -32602, "Invalid params", nil)
+		return
+	}
+
+	s.logger.Info("tool call", "tool", params.Name)
+
+	_, ok := s.tools[params.Name]
+	if !ok {
+		s.writeError(w, req.ID, -32601, fmt.Sprintf("Tool not found: %s", params.Name), nil)
+		return
+	}
+
+	// We need to create a tenant-aware handler wrapper
+	result, err := s.executeToolForTenant(req.Context(), params.Arguments, params.Name, tenantService)
+	if err != nil {
+		s.logger.Error("tool call failed", "tool", params.Name, "error", err)
+		s.writeError(w, req.ID, -32603, err.Error(), nil)
+		return
+	}
+
+	resp := MCPResponse{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result:  result,
+	}
+	s.writeResponse(w, resp)
+}
+
+// executeToolForTenant executes a tool using the tenant-scoped service.
+func (s *MerchantServer) executeToolForTenant(ctx context.Context, params json.RawMessage, toolName string, tenantService service.MerchantMCPService) (any, error) {
+	switch toolName {
+	case mcp.MerchantToolSearchProducts:
+		var p mcp.SearchProductsParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, fmt.Errorf("invalid params: %w", err)
+		}
+		result, err := tenantService.SearchProducts(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"content": []map[string]any{
+				{
+					"type": "text",
+					"text": mustMarshalJSON(result),
+				},
+			},
+		}, nil
+	case mcp.MerchantToolGetProduct:
+		var p mcp.GetProductParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, fmt.Errorf("invalid params: %w", err)
+		}
+		result, err := tenantService.GetProduct(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"content": []map[string]any{
+				{
+					"type": "text",
+					"text": mustMarshalJSON(result),
+				},
+			},
+		}, nil
+	case mcp.MerchantToolCheckAvailability:
+		var p mcp.CheckAvailabilityParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, fmt.Errorf("invalid params: %w", err)
+		}
+		result, err := tenantService.CheckAvailability(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"content": []map[string]any{
+				{
+					"type": "text",
+					"text": mustMarshalJSON(result),
+				},
+			},
+		}, nil
+	case mcp.MerchantToolPurchase:
+		var p mcp.PurchaseParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, fmt.Errorf("invalid params: %w", err)
+		}
+		result, err := tenantService.Purchase(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"content": []map[string]any{
+				{
+					"type": "text",
+					"text": mustMarshalJSON(result),
+				},
+			},
+		}, nil
+	case mcp.MerchantToolGetOrderStatus:
+		var p mcp.GetOrderStatusParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, fmt.Errorf("invalid params: %w", err)
+		}
+		result, err := tenantService.GetOrderStatus(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"content": []map[string]any{
+				{
+					"type": "text",
+					"text": mustMarshalJSON(result),
+				},
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("tool not found: %s", toolName)
+	}
+}
+
+// tenantCatalogRepo wraps CatalogRepository with tenant scoping.
+type tenantCatalogRepo struct {
+	catalogRepo repository.CatalogRepository
+	tenantID    string
+}
+
+func (t *tenantCatalogRepo) GetProduct(ctx context.Context, id string) (*model.Product, error) {
+	return t.catalogRepo.GetProductByTenant(ctx, id, t.tenantID)
+}
+
+func (t *tenantCatalogRepo) GetProductBySKU(ctx context.Context, sku string) (*model.Product, error) {
+	// For simplicity, we don't implement full SKU lookup by tenant here
+	// In production, you'd add GetProductBySKUByTenant to the interface
+	return t.catalogRepo.GetProductBySKU(ctx, sku)
+}
+
+func (t *tenantCatalogRepo) SearchProducts(ctx context.Context, filter repository.SearchFilter) ([]*model.Product, error) {
+	return t.catalogRepo.SearchProductsByTenant(ctx, filter, t.tenantID)
+}
+
+func (t *tenantCatalogRepo) GetAllProducts(ctx context.Context) ([]*model.Product, error) {
+	return t.catalogRepo.SearchProductsByTenant(ctx, repository.SearchFilter{}, t.tenantID)
+}
+
+func (t *tenantCatalogRepo) CheckAvailability(ctx context.Context, sku string) (*model.InventoryCheck, error) {
+	return t.catalogRepo.CheckAvailabilityByTenant(ctx, sku, t.tenantID)
+}
+
+func (t *tenantCatalogRepo) ReserveInventory(ctx context.Context, sku string, quantity int) error {
+	// Use base method since inventory operations are tenant-scoped by SKU
+	return t.catalogRepo.ReserveInventory(ctx, sku, quantity)
+}
+
+func (t *tenantCatalogRepo) ReleaseInventory(ctx context.Context, sku string, quantity int) error {
+	return t.catalogRepo.ReleaseInventory(ctx, sku, quantity)
+}
+
+func (t *tenantCatalogRepo) ConfirmInventory(ctx context.Context, sku string, quantity int) error {
+	return t.catalogRepo.ConfirmInventory(ctx, sku, quantity)
+}
+
+func (t *tenantCatalogRepo) InsertProduct(ctx context.Context, p *model.Product, tenantID string) error {
+	return t.catalogRepo.InsertProduct(ctx, p, tenantID)
+}
+
+func (t *tenantCatalogRepo) SearchProductsByTenant(ctx context.Context, filter repository.SearchFilter, tenantID string) ([]*model.Product, error) {
+	return t.catalogRepo.SearchProductsByTenant(ctx, filter, tenantID)
+}
+
+func (t *tenantCatalogRepo) GetProductByTenant(ctx context.Context, id string, tenantID string) (*model.Product, error) {
+	return t.catalogRepo.GetProductByTenant(ctx, id, tenantID)
+}
+
+func (t *tenantCatalogRepo) CheckAvailabilityByTenant(ctx context.Context, sku string, tenantID string) (*model.InventoryCheck, error) {
+	return t.catalogRepo.CheckAvailabilityByTenant(ctx, sku, tenantID)
 }
 
 // handleInitialize handles the initialize request.

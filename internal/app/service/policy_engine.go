@@ -92,7 +92,7 @@ func (e *PolicyEngineImpl) Evaluate(ctx context.Context, req *model.PurchaseRequ
 			Details:   json.RawMessage(fmt.Sprintf(`{"current_spend": %d, "requested": %d, "cap": %d}`, currentSpend, req.AmountPaisa, cfg.SpendCapPaisa)),
 			Remaining: model.PolicyRemaining{
 				SpendCapPaisa:     remaining,
-				PerSKUCap:         e.computeRemainingPerSKUCap(cfg, req.BuyerID, req.SessionID),
+				PerSKUCap:         e.computeRemainingPerSKUCap(ctx, cfg, req.BuyerID, req.SessionID),
 				VelocityRemaining: e.computeRemainingVelocity(cfg, currentVelocity),
 			},
 		}, nil
@@ -126,7 +126,7 @@ func (e *PolicyEngineImpl) Evaluate(ctx context.Context, req *model.PurchaseRequ
 			Details:   json.RawMessage(fmt.Sprintf(`{"current_count": %d, "cap": %d, "window_seconds": %d}`, currentVelocity, cfg.VelocityCap.MaxRequests, cfg.VelocityCap.WindowSeconds)),
 			Remaining: model.PolicyRemaining{
 				SpendCapPaisa:     cfg.SpendCapPaisa - currentSpend,
-				PerSKUCap:         e.computeRemainingPerSKUCap(cfg, req.BuyerID, req.SessionID),
+				PerSKUCap:         e.computeRemainingPerSKUCap(ctx, cfg, req.BuyerID, req.SessionID),
 				VelocityRemaining: 0,
 			},
 		}, nil
@@ -152,7 +152,7 @@ func (e *PolicyEngineImpl) Evaluate(ctx context.Context, req *model.PurchaseRequ
 				Details:   details,
 				Remaining: model.PolicyRemaining{
 					SpendCapPaisa:     cfg.SpendCapPaisa - currentSpend,
-					PerSKUCap:         e.computeRemainingPerSKUCap(cfg, req.BuyerID, req.SessionID),
+					PerSKUCap:         e.computeRemainingPerSKUCap(ctx, cfg, req.BuyerID, req.SessionID),
 					VelocityRemaining: e.computeRemainingVelocity(cfg, currentVelocity),
 				},
 			}, nil
@@ -168,7 +168,7 @@ func (e *PolicyEngineImpl) Evaluate(ctx context.Context, req *model.PurchaseRequ
 				Details:   json.RawMessage(fmt.Sprintf(`{"blocked_sku": "%s"}`, req.SKU)),
 				Remaining: model.PolicyRemaining{
 					SpendCapPaisa:     cfg.SpendCapPaisa - currentSpend,
-					PerSKUCap:         e.computeRemainingPerSKUCap(cfg, req.BuyerID, req.SessionID),
+					PerSKUCap:         e.computeRemainingPerSKUCap(ctx, cfg, req.BuyerID, req.SessionID),
 					VelocityRemaining: e.computeRemainingVelocity(cfg, currentVelocity),
 				},
 			}, nil
@@ -207,7 +207,7 @@ func (e *PolicyEngineImpl) Evaluate(ctx context.Context, req *model.PurchaseRequ
 				Details:   details,
 				Remaining: model.PolicyRemaining{
 					SpendCapPaisa:     cfg.SpendCapPaisa - currentSpend,
-					PerSKUCap:         e.computeRemainingPerSKUCap(cfg, req.BuyerID, req.SessionID),
+					PerSKUCap:         e.computeRemainingPerSKUCap(ctx, cfg, req.BuyerID, req.SessionID),
 					VelocityRemaining: e.computeRemainingVelocity(cfg, currentVelocity),
 				},
 			}, nil
@@ -220,18 +220,18 @@ func (e *PolicyEngineImpl) Evaluate(ctx context.Context, req *model.PurchaseRequ
 		RuleFired: model.RuleFiredNone,
 		Remaining: model.PolicyRemaining{
 			SpendCapPaisa:     cfg.SpendCapPaisa - currentSpend - req.AmountPaisa,
-			PerSKUCap:         e.computeRemainingPerSKUCap(cfg, req.BuyerID, req.SessionID),
+			PerSKUCap:         e.computeRemainingPerSKUCap(ctx, cfg, req.BuyerID, req.SessionID),
 			VelocityRemaining: e.computeRemainingVelocity(cfg, currentVelocity),
 		},
 	}, nil
 }
 
 // computeRemainingPerSKUCap calculates remaining quantity for SKUs with configured caps.
-func (e *PolicyEngineImpl) computeRemainingPerSKUCap(cfg *model.PolicyConfig, buyerID, sessionID string) map[string]int {
+func (e *PolicyEngineImpl) computeRemainingPerSKUCap(ctx context.Context, cfg *model.PolicyConfig, buyerID, sessionID string) map[string]int {
 	result := make(map[string]int)
 	for sku, cap := range cfg.PerSKUCap {
 		if cap > 0 {
-			current, _ := e.policyRepo.GetSKUQuantity(context.Background(), buyerID, sessionID, sku)
+			current, _ := e.policyRepo.GetSKUQuantity(ctx, buyerID, sessionID, sku)
 			remaining := cap - current
 			if remaining < 0 {
 				remaining = 0

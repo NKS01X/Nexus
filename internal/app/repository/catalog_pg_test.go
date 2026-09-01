@@ -263,19 +263,19 @@ func setupTestCatalog(t *testing.T, ctx context.Context, db *DB) {
 	_, _ = db.ExecCtx(ctx, `DELETE FROM products`)
 
 	_, err := db.ExecCtx(ctx, `
-		INSERT INTO products (id, sku, name, description, category, images, attributes, reviews, created_at, updated_at)
+		INSERT INTO products (id, sku, name, description, category, images, attributes, reviews, tenant_id, created_at, updated_at)
 		VALUES ('prod_001', 'SHOE-RUN-001', 'Running Shoes', 'Comfortable running shoes', 'footwear',
 		        '["img1.jpg", "img2.jpg"]', '{"brand": "Nike"}', '[{"rating": 5, "title": "Great!"}]',
-		        NOW(), NOW())
+		        'default', NOW(), NOW())
 	`)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	_, err = db.ExecCtx(ctx, `
-		INSERT INTO offers (id, product_id, sku, price_paisa, currency, inventory, reserved_count, size, color, created_at, updated_at)
-		VALUES ('offer_001', 'prod_001', 'SHOE-RUN-001-RED-42', 249900, 'INR', 10, 0, '42', 'red', NOW(), NOW()),
-		       ('offer_002', 'prod_001', 'SHOE-RUN-001-BLU-43', 249900, 'INR', 5, 0, '43', 'blue', NOW(), NOW())
+		INSERT INTO offers (id, product_id, sku, price_paisa, currency, inventory, reserved_count, size, color, tenant_id, created_at, updated_at)
+		VALUES ('offer_001', 'prod_001', 'SHOE-RUN-001-RED-42', 249900, 'INR', 10, 0, '42', 'red', 'default', NOW(), NOW()),
+		       ('offer_002', 'prod_001', 'SHOE-RUN-001-BLU-43', 249900, 'INR', 5, 0, '43', 'blue', 'default', NOW(), NOW())
 	`)
 	if err != nil {
 		t.Fatal(err)

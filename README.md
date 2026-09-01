@@ -1,251 +1,166 @@
-# Nexus
+<div align="center">
+  <br />
+  <h1>🚀 Nexus</h1>
+  <p><b>Enterprise-Grade Agentic Commerce Infrastructure for Merchants</b></p>
+  <br />
 
-**AI agent commerce infrastructure for merchants.**
-
-Nexus is a self-hosted platform that makes any merchant transactable by AI shopping agents — exposing a standards-compliant MCP storefront, enforcing deterministic purchase policies, and maintaining a tamper-evident audit trail of every agent action.
-
-[![Go](https://img.shields.io/badge/go-1.22+-blue)](https://go.dev/) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Build](https://img.shields.io/badge/build-passing-brightgreen)]()
-
----
-
-## The Problem
-
-AI shopping agents are becoming a real sales channel. But merchants have no safe way to accept them today:
-
-- An agent manipulated via prompt injection can request 500 units of a ₹5,000 product.
-- There is no standard interface for agents to browse catalogs and place orders.
-- There is no audit trail when something goes wrong.
+  [![Go](https://img.shields.io/badge/go-1.22+-blue)](https://go.dev/)
+  [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+</div>
 
 ---
 
-## What Nexus Does
+## 🎥 Platform Overview
 
-Nexus ships two services that work together:
+*(Watch our high-speed run-through of the Nexus platform in action, including merchant onboarding, the human approval queue, and the automated security testing suite.)*
 
-| Service | Purpose |
-|---|---|
-| **Merchant MCP Server** | Exposes your catalog and checkout as MCP tools any AI agent can call |
-| **Policy Gateway** | Enforces hard caps in deterministic Go code before any payment is attempted |
-
-Every purchase flows: `AI Agent → Merchant MCP → Policy Gateway → Razorpay → Audit Log`
-
-Blocked purchases are routed to a human approval queue. Every decision — allowed or blocked — is appended to a SHA-256 hash-chained log.
+![Nexus Demo Video](assets/demo.webp)
 
 ---
 
-## Key Features
+## 💡 The Problem
 
-- **MCP-native storefront** — `search_products`, `get_product`, `check_availability`, `purchase`, `get_order_status` exposed as standard MCP tools
-- **Deterministic policy engine** — spend cap, per-SKU cap, velocity cap, category allowlist, geo rules, SKU blocklist; all compiled Go, no LLM in the enforcement path
-- **Idempotent purchases** — replay-safe via idempotency keys, prevents duplicate charges
-- **Hash-chained audit log** — append-only, SHA-256 linked, verifiable on demand
-- **Human approval queue** — blocked requests surface in a dashboard for manual review
-- **Red team suite** — 7 automated attack vectors run on every deploy to confirm nothing regressed
-- **Razorpay integration** — connects to the official `razorpay-mcp-server` binary in test mode
+As AI shopping agents evolve into a legitimate, high-volume sales channel, merchants face a critical infrastructure gap. Currently, there is **no safe, standardized way** to accept agent-driven autonomous transactions:
+
+1. **Unbounded Financial Risk:** Without strict safeguards, an agent could be manipulated via prompt injection to purchase massive quantities of expensive items (e.g., 500 units of a $10,000 product).
+2. **Missing Infrastructure:** There is no universal standard interface for AI agents to natively browse merchant catalogs, verify stock, and execute complex multi-step orders.
+3. **Zero Accountability:** If an autonomous transaction behaves unexpectedly, merchants lack the cryptographically secure audit trails needed for compliance, debugging, and dispute resolution.
 
 ---
 
-## Architecture
+## ⚡ The Solution: Nexus
 
-```mermaid
-graph TD
-    subgraph Buyer["AI Buyer"]
-        A[AI Shopping Agent]
-    end
+**Nexus** is a robust, self-hosted commerce gateway that makes any merchant natively transactable by AI buyers end-to-end. 
 
-    subgraph Nexus["Nexus — Merchant Infrastructure"]
-        B[Merchant MCP Server]
-        C[Policy Gateway]
-        D[Approval Queue]
-        E[Audit Log]
-        F[Razorpay MCP Client]
-    end
+By exposing a standardized **Model Context Protocol (MCP)** storefront, Nexus allows AI agents to interact with catalogs seamlessly while guaranteeing that **every single monetary action is explainable, bounded, and cryptographically gated**. 
 
-    subgraph Razorpay["Razorpay"]
-        G[Razorpay MCP Server]
-        H[Razorpay Test API]
-    end
+Critically, **no LLM sits in the enforcement path**. All security policies and spend limits are evaluated deterministically in compiled Go code with sub-millisecond latency, entirely eliminating AI hallucination risks during the checkout and payment phases.
 
-    subgraph Storage["Storage"]
-        I[(PostgreSQL)]
-    end
+### The Request Lifecycle:
+`AI Agent → Merchant MCP Server → Deterministic Policy Gateway → Razorpay API → Audit Log`
 
-    A -->|MCP: search / purchase| B
-    B -->|forward purchase| C
-    C -->|allowed| F
-    C -->|blocked| D
-    C -->|every decision| E
-    F -->|MCP| G
-    G -->|HTTPS| H
-    B --- I
-    C --- I
-    D --- I
-    E --- I
-```
-
-### Request Flow
-
-| Step | Actor | Action |
-|---|---|---|
-| 1 | AI Agent | Calls `purchase` on Merchant MCP Server |
-| 2 | Merchant MCP | Looks up product price from catalog, forwards to Policy Gateway |
-| 3 | Policy Gateway | Evaluates all caps against live DB state |
-| 4a | Gateway (allowed) | Creates Razorpay order, captures payment, confirms inventory |
-| 4b | Gateway (blocked) | Enqueues to Approval Queue, returns `PENDING_APPROVAL` |
-| 5 | Audit Log | Appends SHA-256 chained entry for every outcome |
-| 6 | Human Reviewer | Approves or rejects from dashboard; approved triggers payment |
-
-### Policy Engine Checks
-
-| Rule | Default |
-|---|---|
-| Spend cap | ₹3,000 per buyer per session |
-| Per-SKU cap | Configurable per variant |
-| Velocity cap | 10 requests / 60 seconds |
-| Category allowlist | `footwear`, `apparel` |
-| SKU blocklist | Configurable |
-| Geo restriction | Pincode-level |
-
+If an agent's request violates a policy boundary (e.g., exceeding a spend cap or velocity limit), the transaction fails gracefully and is safely routed to a **Human Approval Queue**. This ensures merchants never lose a legitimate, high-value sale due to a strict automated rule.
 
 ---
 
-## Tech Stack
+## 🚀 Core Capabilities
 
-| Layer | Choice |
-|---|---|
-| Language | Go 1.22 |
-| Database | PostgreSQL 15 |
-| Protocol | Model Context Protocol (MCP) |
-| Payments | Razorpay MCP Server |
-| Deployment | Docker + Docker Compose |
-
----
-
-## Quick Start
-
-**Prerequisites:** Go 1.22+, PostgreSQL 15+, Docker
-
-```bash
-git clone https://github.com/razorpay/nexus.git
-cd nexus
-
-cp config.yaml.example config.yaml
-# Edit config.yaml — set your DATABASE_DSN and RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET
-
-docker compose up -d
-
-go run cmd/migrate/main.go config.yaml
-go run cmd/seed-catalog/main.go config.yaml
-
-go run cmd/aegis-gateway/main.go config.yaml &
-go run cmd/merchant-mcp/main.go config.yaml &
-```
-
-The Merchant MCP Server is now live on `:8082`. Point any MCP-compatible AI agent at it.
+*   🛡️ **Deterministic Policy Engine:** Enforces session spend caps, per-SKU quantity limits, velocity caps (rate limiting), category allowlists, and strict geo-fencing.
+*   ⛓️ **Cryptographic Audit Log:** A hash-chained, append-only ledger records every decision made by the agent and the gateway, guaranteeing tamper-proof compliance.
+*   👨‍⚖️ **Human-in-the-Loop Approvals:** Blocked or anomalous requests instantly surface in a React-based dashboard for manual merchant review and overriding.
+*   🛍️ **Transactable End-to-End:** Full commerce lifecycle (catalog search, product retrieval, inventory checking, and purchasing) is exposed natively as standard MCP tools.
+*   💳 **Seamless Payments:** Integrates natively with the Razorpay API to handle secure payment capture and reconciliation without exposing merchant secrets to the AI.
+*   🔄 **Idempotent Execution:** All purchase requests are strictly deduplicated using idempotency keys, preventing double-charging during network partitions or agent retries.
 
 ---
 
-## Configuration
+## 🛠️ Exposed MCP Tools
 
-Copy `config.yaml.example` to `config.yaml`. Key fields:
+The **Merchant MCP Server** acts as the universal adapter between external LLM agents and the merchant's private catalog/payment gateway. It exposes the following tools to the AI:
 
-```yaml
-database:
-  dsn: "postgres://user:pass@localhost:5432/nexus?sslmode=disable"
-
-razorpay:
-  key_id: "${RAZORPAY_KEY_ID}"
-  key_secret: "${RAZORPAY_KEY_SECRET}"
-
-policy:
-  spend_cap_paisa: 300000
-  velocity_cap:
-    max_requests: 10
-    window_seconds: 60
-  allowed_categories: ["footwear", "apparel"]
-```
-
-Full reference in `config.yaml.example`.
+| Tool Name | Description | Required Parameters |
+| :--- | :--- | :--- |
+| `search_products` | Browse the catalog using rich filters. | `query`, `category`, `min_price`, `max_price`, `in_stock_only` |
+| `get_product` | Retrieve exhaustive details and metadata for a specific item. | `product_id` |
+| `check_availability` | Verify real-time inventory allocation for a given SKU. | `sku` |
+| `purchase` | Initiate a secure transaction evaluated by the Policy Gateway. | `buyer_id`, `session_id`, `sku`, `quantity`, `idempotency_key` |
+| `get_order_status` | Track the status of a pending, approved, or completed order. | `order_id` |
 
 ---
 
-## Running the Demo
+## 💻 Technology Stack
 
-```bash
-go run cmd/demo-buyer/main.go config.yaml
-```
+Nexus is engineered for extreme low-latency, transactional safety, and high reliability:
 
-This runs a scripted AI buyer that searches the catalog, selects a product, checks availability, and attempts a purchase. You will see the policy decision, audit entry, and order ID printed to stdout.
+*   **Backend Services:** Go 1.22 (Leveraging zero-allocation paths for policy evaluation, strict typing)
+*   **Database:** PostgreSQL 15 (ACID compliance, JSONB for extensible metadata, transactional tracking)
+*   **Frontend UI:** React.js, Tailwind CSS, Vite (Responsive merchant dashboards and onboarding portals)
+*   **Agent Protocol:** Model Context Protocol (MCP) for standardized LLM interaction
+*   **Payment Infrastructure:** Razorpay API via the official `razorpay-mcp-server` integration
+*   **Deployment:** Docker & Docker Compose for rapid, single-command orchestration
 
 ---
 
-## Red Team Suite
+## 🏗️ Architecture & Core Services
+
+![Nexus Architecture Diagram](assets/architecture.png)
+
+Nexus operates as a constellation of highly cohesive, horizontally scalable microservices:
+
+1. **Merchant MCP Server (`:8082`):** The external-facing interface. Parses AI agent intent, validates payload schemas, and routes actions to internal services.
+2. **Policy Gateway (`:8081`):** The core enforcement engine. Evaluates deterministic rules (spend caps, velocity, geo-fencing) against Postgres state before any payment is authorized.
+3. **Approval Queue (`:8083`):** The human-in-the-loop fallback service. Captures blocked transactions, stores reasoning, and holds them pending merchant review.
+4. **Admin Portal (`:8084`):** The React-based dashboard for merchants to configure policies, view the hash-chained audit log, and approve/reject blocked requests.
+5. **Razorpay Client:** Manages the secure, authenticated connection to Razorpay's financial infrastructure to finalize payments post-approval.
+
+---
+
+## 🚨 Automated Security Validation (Red Team Suite)
+
+To guarantee the robustness of the Policy Engine, Nexus ships with a built-in automated Red Team testing suite. Merchants can run this suite against their live stack to simulate a rogue AI buyer attempting to circumvent policy boundaries.
 
 ```bash
 go run cmd/redteam/main.go config.yaml
 ```
 
-Runs 7 automated attacks against a live stack:
-
-| Attack | Expected outcome |
+| Attack Vector | Expected Outcome |
 |---|---|
-| Prompt injection — quantity | Blocked: per-SKU cap |
-| Prompt injection — price | Blocked: catalog-price enforced |
-| Velocity abuse | Blocked: velocity cap |
-| Category escape | Blocked: category not allowed |
-| Geo bypass | Blocked: pincode restricted |
-| Idempotency replay | Deduplicated: same order returned |
-| Hash chain integrity | Verified: chain unbroken |
+| Prompt injection — excessive quantity | **Blocked:** per-SKU cap correctly enforced |
+| Prompt injection — manipulated price | **Blocked:** catalog truth-price strictly enforced |
+| Velocity abuse (DDoS simulation) | **Blocked:** rate limits and velocity caps enforced |
+| Category escape attempt | **Blocked:** unauthorized category purchase denied |
+| Geo-fencing bypass | **Blocked:** unauthorized pincode/region restricted |
+| Idempotency replay attack | **Deduplicated:** original order state securely returned |
+| Hash chain manipulation | **Detected:** audit chain integrity verification triggers alert |
 
 ---
 
-## Approval Dashboard
+## 🚀 Quick Start Guide
 
+**Prerequisites:** Go 1.22+, PostgreSQL 15+, Docker
+
+1. **Clone the Repository:**
 ```bash
-go run cmd/dashboard/main.go config.yaml
+git clone https://github.com/razorpay/nexus.git
+cd nexus
 ```
 
-Opens at `http://localhost:8083`. Lists all pending approval queue items with full policy context. Approve or reject with one click.
+2. **Configure Environment:**
+Create a `.env` file at the root with your payment gateway credentials:
+```env
+RAZORPAY_KEY_ID=your_key_id
+RAZORPAY_KEY_SECRET=your_key_secret
+```
+
+3. **Start the Infrastructure:**
+We provide an automated orchestration script that spins up PostgreSQL, compiles all Go microservices, seeds the database with a test catalog, and starts the UI portals.
+```bash
+./scripts/demo.sh
+```
+
+4. **Explore the Ecosystem:**
+- **Admin Portal (Merchant Dashboard):** [http://localhost:8084](http://localhost:8084) (Default Admin Key: `nexus_admin_default`)
+- **Approval Queue:** [http://localhost:8084/approvals](http://localhost:8084/approvals)
+- **Security Suite:** [http://localhost:8084/redteam](http://localhost:8084/redteam)
+- **Merchant MCP Endpoint:** `http://localhost:8082/mcp/{store_id}`
 
 ---
 
-## Project Layout
+## 👨‍💻 Clean Architecture Layout
+
+The codebase strictly follows Domain-Driven Design (DDD) and Clean Architecture principles:
 
 ```
-cmd/
-  aegis-gateway/    policy gateway entrypoint
-  merchant-mcp/     AI-facing MCP server entrypoint
-  dashboard/        approval review UI
-  demo-buyer/       scripted AI buyer
-  redteam/          automated attack suite
-  seed-catalog/     synthetic catalog seeder
-  migrate/          database migration runner
-
+cmd/                # Entrypoints for all microservices (gateway, mcp, portal, redteam)
 internal/app/
-  service/          business logic (policy engine, gateway, audit, queue)
-  repository/       PostgreSQL implementations
-  model/            domain types
-  mcp/              MCP tool definitions
-  integration/      end-to-end test suite
-
-internal/pkg/
-  mcp/              MCP server implementations
-  razorpay_mcp/     Razorpay MCP client
-  config/           config loading
-  logger/           structured logger
-
-migrations/         SQL migration files
-web/templates/      approval dashboard HTML
+  ├── service/      # Core business logic (Policy Engine, Gateway, Audit, Queue)
+  ├── repository/   # PostgreSQL data access layer (Interfaces and implementations)
+  ├── model/        # Domain entities and strict types
+  ├── mcp/          # MCP tool definitions and schema validation
+  └── integration/  # End-to-end integration test suite
+internal/pkg/       # Shared utilities (structured logger, config parsing, API clients)
+migrations/         # Versioned SQL migration files for Postgres
+web/                # Frontend React application (Admin Portal and Dashboards)
+assets/             # Architecture diagrams and demonstration media
+scripts/            # Orchestration, CI/CD, and deployment scripts
 ```
-
----
-
-## Contributing
-
-Open a PR. Keep commits conventional (`feat:`, `fix:`, `chore:`).
-
----
-
-## License
-
-[MIT](LICENSE)

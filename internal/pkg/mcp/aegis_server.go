@@ -19,6 +19,7 @@ import (
 // AegisServer is the MCP server for the Aegis Gateway.
 type AegisServer struct {
 	gatewayService service.GatewayService
+	auditService   service.AuditService
 	logger         *slog.Logger
 	mu             sync.Mutex
 	tools          map[string]ToolHandler
@@ -28,9 +29,10 @@ type AegisServer struct {
 type ToolHandler func(ctx context.Context, params json.RawMessage) (any, error)
 
 // NewAegisServer creates a new Aegis MCP server.
-func NewAegisServer(gatewayService service.GatewayService, logger *slog.Logger) *AegisServer {
+func NewAegisServer(gatewayService service.GatewayService, auditService service.AuditService, logger *slog.Logger) *AegisServer {
 	s := &AegisServer{
 		gatewayService: gatewayService,
+		auditService:   auditService,
 		logger:         logger,
 		tools:          make(map[string]ToolHandler),
 	}
@@ -48,6 +50,11 @@ func (s *AegisServer) Start(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", s.handleMCP)
 	mux.HandleFunc("/health", s.handleHealth)
+	
+	mux.HandleFunc("/api/audit/verify", s.handleAuditVerify)
+	mux.HandleFunc("/api/audit/trail", s.handleAuditTrail)
+	mux.HandleFunc("/api/audit/entries", s.handleAuditEntries)
+	mux.HandleFunc("/ready", s.handleReady)
 
 	server := &http.Server{
 		Addr:    addr,
@@ -218,6 +225,61 @@ func (s *AegisServer) handlePurchase(ctx context.Context, params json.RawMessage
 func (s *AegisServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *AegisServer) handleAuditVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	valid, err := s.auditService.VerifyIntegrity(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"chain_valid": valid,
+		"verified_at": time.Now().Format(time.RFC3339),
+	})
+}
+
+func (s *AegisServer) handleAuditTrail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	buyerID := r.URL.Query().Get("buyer_id")
+	entries, err := s.auditService.GetTrail(r.Context(), buyerID, 100)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
+}
+
+func (s *AegisServer) handleAuditEntries(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	entries, err := s.auditService.GetAll(r.Context(), 100)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
+}
+
+func (s *AegisServer) handleReady(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
 }
 
 // writeResponse writes a JSON response.

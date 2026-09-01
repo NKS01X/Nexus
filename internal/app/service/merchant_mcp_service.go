@@ -30,6 +30,16 @@ func NewMerchantMCPService(catalogRepo repository.CatalogRepository, orderRepo r
 	}
 }
 
+// GetOrderRepo returns the order repository.
+func (s *MerchantMCPServiceImpl) GetOrderRepo() repository.OrderRepository {
+	return s.orderRepo
+}
+
+// GetAegisClient returns the Aegis MCP client.
+func (s *MerchantMCPServiceImpl) GetAegisClient() AegisMCPClient {
+	return s.aegisClient
+}
+
 // SearchProducts searches for products in the catalog.
 func (s *MerchantMCPServiceImpl) SearchProducts(ctx context.Context, params mcp.SearchProductsParams) (*mcp.SearchProductsResult, error) {
 	filter := repository.SearchFilter{
@@ -160,6 +170,7 @@ func (s *MerchantMCPServiceImpl) Purchase(ctx context.Context, params mcp.Purcha
 		AmountPaisa:    amountPaisa,
 		IdempotencyKey: params.IdempotencyKey,
 		BuyerPincode:   params.BuyerPincode,
+		Metadata:       params.Metadata,
 	}
 
 	result, err := s.aegisClient.Purchase(ctx, aegisParams)

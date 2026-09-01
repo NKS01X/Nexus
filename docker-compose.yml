@@ -22,7 +22,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: builder
     container_name: aegis-gateway
     command: ["/usr/local/bin/aegis-gateway", "--config", "/app/config.yaml"]
     ports:
@@ -43,7 +42,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: builder
     container_name: merchant-mcp
     command: ["/usr/local/bin/merchant-mcp", "--config", "/app/config.yaml"]
     ports:
@@ -60,7 +58,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: builder
     container_name: aegis-dashboard
     command: ["/usr/local/bin/dashboard", "--config", "/app/config.yaml", "--port", "8083"]
     ports:
@@ -73,6 +70,24 @@ services:
       - ./config.yaml:/app/config.yaml:ro
       - ./web:/app/web:ro
     entrypoint: ["/bin/sh", "-c", "/usr/local/bin/migrate && /usr/local/bin/dashboard --config /app/config.yaml --port 8083"]
+
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aegis-portal
+    command: ["/usr/local/bin/portal", "--config", "/app/config.yaml"]
+    ports:
+      - "8084:8084"
+    environment:
+      - DB_PASSWORD=postgres
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+    depends_on:
+      - aegis-gateway
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    entrypoint: ["/bin/sh", "-c", "/usr/local/bin/migrate && /usr/local/bin/portal --config /app/config.yaml"]
 
 volumes:
   postgres_data:

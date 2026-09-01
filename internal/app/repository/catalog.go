@@ -16,6 +16,12 @@ type CatalogRepository interface {
 	ReserveInventory(ctx context.Context, sku string, quantity int) error
 	ReleaseInventory(ctx context.Context, sku string, quantity int) error
 	ConfirmInventory(ctx context.Context, sku string, quantity int) error
+
+	// Tenant-scoped methods for multi-tenancy
+	InsertProduct(ctx context.Context, p *model.Product, tenantID string) error
+	SearchProductsByTenant(ctx context.Context, filter SearchFilter, tenantID string) ([]*model.Product, error)
+	GetProductByTenant(ctx context.Context, id string, tenantID string) (*model.Product, error)
+	CheckAvailabilityByTenant(ctx context.Context, sku string, tenantID string) (*model.InventoryCheck, error)
 }
 
 // SearchFilter holds search parameters for product queries.

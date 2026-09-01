@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/razorpay/aegis/internal/app/mcp"
@@ -28,6 +31,7 @@ type GatewayServiceImpl struct {
 	queueRepo      repository.ApprovalQueueRepository
 	orderRepo      repository.OrderRepository
 	catalogRepo    repository.CatalogRepository
+	logger         *slog.Logger
 }
 
 // NewGatewayService creates a new GatewayServiceImpl.
@@ -38,6 +42,7 @@ func NewGatewayService(
 	queueRepo repository.ApprovalQueueRepository,
 	orderRepo repository.OrderRepository,
 	catalogRepo repository.CatalogRepository,
+	logger *slog.Logger,
 ) *GatewayServiceImpl {
 	return &GatewayServiceImpl{
 		policyEngine:   policyEngine,
@@ -46,6 +51,7 @@ func NewGatewayService(
 		queueRepo:      queueRepo,
 		orderRepo:      orderRepo,
 		catalogRepo:    catalogRepo,
+		logger:         logger,
 	}
 }
 
@@ -93,7 +99,7 @@ func (s *GatewayServiceImpl) Purchase(ctx context.Context, params mcp.AegisPurch
 	auditEntry := s.buildAuditEntry(req, decision, model.AuditActionPurchaseAttempt, "")
 	if err := s.auditService.Log(ctx, auditEntry); err != nil {
 
-		fmt.Printf("audit log failed: %v\n", err)
+		s.logger.Error("audit log failed", "error", err)
 	}
 
 	if !decision.Allowed {
@@ -105,7 +111,7 @@ func (s *GatewayServiceImpl) Purchase(ctx context.Context, params mcp.AegisPurch
 
 		auditEntry := s.buildAuditEntry(req, decision, model.AuditActionEscalated, approvalID)
 		if err := s.auditService.Log(ctx, auditEntry); err != nil {
-			fmt.Printf("audit log failed: %v\n", err)
+			s.logger.Error("audit log failed", "error", err)
 		}
 
 		return &mcp.AegisPurchaseResult{
@@ -123,7 +129,7 @@ func (s *GatewayServiceImpl) Purchase(ctx context.Context, params mcp.AegisPurch
 
 		auditEntry := s.buildAuditEntry(req, decision, model.AuditActionPurchaseBlocked, err.Error())
 		if auditErr := s.auditService.Log(ctx, auditEntry); auditErr != nil {
-			fmt.Printf("audit log failed: %v\n", auditErr)
+			s.logger.Error("audit log failed", "error", auditErr)
 		}
 		return nil, err
 	}
@@ -135,7 +141,7 @@ func (s *GatewayServiceImpl) Purchase(ctx context.Context, params mcp.AegisPurch
 	auditEntry = s.buildAuditEntry(req, decision, model.AuditActionPaymentExecuted, "")
 	auditEntry.Response = json.RawMessage(fmt.Sprintf(`{"order_id": "%s", "payment_id": "%s"}`, orderID, paymentID))
 	if err := s.auditService.Log(ctx, auditEntry); err != nil {
-		fmt.Printf("audit log failed: %v\n", err)
+		s.logger.Error("audit log failed", "error", err)
 	}
 
 	return &mcp.AegisPurchaseResult{
@@ -194,7 +200,7 @@ func (s *GatewayServiceImpl) ApproveRequest(ctx context.Context, approvalID, rev
 		Response:       json.RawMessage(fmt.Sprintf(`{"order_id": "%s", "payment_id": "%s"}`, result.OrderID, result.PaymentID)),
 	}
 	if err := s.auditService.Log(ctx, auditEntry); err != nil {
-		fmt.Printf("audit log failed: %v\n", err)
+		s.logger.Error("audit log failed", "error", err)
 	}
 
 	return result, nil
@@ -228,7 +234,7 @@ func (s *GatewayServiceImpl) RejectRequest(ctx context.Context, approvalID, revi
 		Response:       json.RawMessage(fmt.Sprintf(`{"note": "%s"}`, note)),
 	}
 	if err := s.auditService.Log(ctx, auditEntry); err != nil {
-		fmt.Printf("audit log failed: %v\n", err)
+		s.logger.Error("audit log failed", "error", err)
 	}
 
 	return nil
@@ -355,5 +361,7 @@ func convertPolicyRemaining(r model.PolicyRemaining) mcp.PolicyRemaining {
 
 // generateApprovalID generates a unique approval ID.
 func generateApprovalID() string {
-	return fmt.Sprintf("appr_%d", time.Now().UnixNano())
+	b := make([]byte, 8)
+	rand.Read(b)
+	return "appr_" + hex.EncodeToString(b)
 }

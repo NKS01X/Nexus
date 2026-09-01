@@ -90,6 +90,7 @@ func main() {
 		queueRepo,
 		orderRepo,
 		catalogRepo,
+		log,
 	)
 
 	aegisClient := &directAegisClient{gatewayService: gatewayService}
@@ -207,7 +208,7 @@ func runDemoBuyer(ctx context.Context, merchantService service.MerchantMCPServic
 			offer.SKU, float64(offer.PricePaisa)/100, offer.Size, offer.Color, offer.Inventory)
 	}
 
-	// Step 4: Select best matching offer
+	// Select best matching offer
 	var chosenOffer *model.Offer
 	for _, offer := range product.Offers {
 		match := true
@@ -239,6 +240,21 @@ func runDemoBuyer(ctx context.Context, merchantService service.MerchantMCPServic
 	sessionID := fmt.Sprintf("session_%s_%d", goal.BuyerID, time.Now().Unix())
 	idempotencyKey := fmt.Sprintf("idem_%s_%d", goal.BuyerID, time.Now().UnixNano())
 
+	reasoning := fmt.Sprintf(
+		"Selected %s (%s) matching buyer's %s request. "+
+			"Price ₹%.2f is within ₹%.2f budget. "+
+			"Choosing %s colorway, size %s based on search criteria.",
+		chosenOffer.SKU, product.Name, goal.Query,
+		float64(chosenOffer.PricePaisa)/100, goal.MaxPriceINR,
+		chosenOffer.Color, chosenOffer.Size,
+	)
+	metadata, _ := json.Marshal(map[string]any{
+		"reasoning":  reasoning,
+		"confidence": 0.92,
+		"goal_query": goal.Query,
+		"budget_inr": goal.MaxPriceINR,
+	})
+
 	purchaseResult, err := merchantService.Purchase(ctx, appmcp.PurchaseParams{
 		BuyerID:        goal.BuyerID,
 		SessionID:      sessionID,
@@ -247,6 +263,7 @@ func runDemoBuyer(ctx context.Context, merchantService service.MerchantMCPServic
 		Quantity:       1,
 		IdempotencyKey: idempotencyKey,
 		BuyerPincode:   goal.BuyerPincode,
+		Metadata:       metadata,
 	})
 	if err != nil {
 		log.Printf("purchase failed: %v", err)
@@ -287,7 +304,7 @@ func runDemoBuyer(ctx context.Context, merchantService service.MerchantMCPServic
 	fmt.Println("\n=== DEMO COMPLETE ===")
 }
 
-// directAegisClient implements AegisMCPClient using direct service call
+// directAegisClient implements AegisMCPClient using direct service call.
 type directAegisClient struct {
 	gatewayService service.GatewayService
 }
@@ -300,6 +317,7 @@ func (c *directAegisClient) Purchase(ctx context.Context, params appmcp.AegisPur
 	return &appmcp.AegisPurchaseResult{
 		Allowed:         result.Allowed,
 		Reason:          result.Reason,
+		RuleFired:       result.RuleFired,
 		Status:          result.Status,
 		OrderID:         result.OrderID,
 		PaymentID:       result.PaymentID,

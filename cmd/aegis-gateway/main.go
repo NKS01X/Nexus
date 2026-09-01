@@ -48,9 +48,10 @@ func main() {
 	auditRepo := repository.NewAuditPG(db)
 	queueRepo := repository.NewApprovalQueuePG(db)
 
-	// Initialize Razorpay MCP client (use mock if binary path is empty)
+	// Initialize Razorpay MCP client — fall back to mock when binary path is unset (local dev).
 	var razorpayClient service.RazorpayMCPClient
 	if cfg.RazorpayMCP.BinaryPath == "" {
+		log.Info("razorpay_mcp binary_path not set — using mock payment client")
 		razorpayClient = razorpay_mcp.NewMockClient()
 	} else {
 		var err error
@@ -62,8 +63,8 @@ func main() {
 			log.Error("create razorpay mcp client", "error", err)
 			os.Exit(1)
 		}
+		defer razorpayClient.Close()
 	}
-	defer razorpayClient.Close()
 
 	policyEngine := service.NewPolicyEngine(policyRepo, catalogRepo)
 	auditService := service.NewAuditService(auditRepo)
@@ -75,9 +76,10 @@ func main() {
 		queueRepo,
 		orderRepo,
 		catalogRepo,
+		log,
 	)
 
-	mcpServer := mcp.NewAegisServer(gatewayService, log)
+	mcpServer := mcp.NewAegisServer(gatewayService, auditService, log)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

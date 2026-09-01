@@ -6,7 +6,17 @@ bin/
 *.so
 *.dylib
 *.test
+*.out
 coverage.out
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Frontend build output
+dist/
+dist-ssr/
 
 # Configuration files with local secrets
 config.yaml
@@ -20,9 +30,14 @@ config.test.yaml
 Buildathon-Statements.md
 .claude/
 .claude.json
+.antigravity/
 
 # Agent configuration (local only, never commit)
 .opencode-rules/
 .opencode/
 AGENTS.md
 CLAUDE.md
+node_modules
+
+# Separate repositories cloned into the workspace
+razorpay-mcp-server/

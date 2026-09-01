@@ -99,6 +99,7 @@ func TestE2EPurchaseFlow(t *testing.T) {
 		queueRepo,
 		orderRepo,
 		catalogRepo,
+		log,
 	)
 
 	aegisClient := &directAegisClient{gatewayService: gatewayService}
@@ -345,18 +346,18 @@ func TestE2EPurchaseFlow(t *testing.T) {
 			break
 		}
 
-		buyerID := "velocity_test_buyer_" + time.Now().Format("20060102150405")
+		buyerID := "velocity_test_buyer_" + fmt.Sprintf("%d", time.Now().UnixNano())
 		blocked := false
 
 		for i := 0; i < 15; i++ {
 			result, err := gatewayService.Purchase(ctx, mcp.AegisPurchaseParams{
 				BuyerID:        buyerID,
-				SessionID:      "vel_session_" + time.Now().Format("20060102150405.000"),
+				SessionID:      fmt.Sprintf("vel_session_%d_%d", time.Now().UnixNano(), i),
 				ProductID:      product.ID,
 				SKU:            chosenOffer.SKU,
 				Quantity:       1,
 				AmountPaisa:    chosenOffer.PricePaisa,
-				IdempotencyKey: "vel_idem_" + time.Now().Format("20060102150405.000000"),
+				IdempotencyKey: fmt.Sprintf("vel_idem_%d_%d", time.Now().UnixNano(), i),
 				BuyerPincode:   "400001",
 			})
 			if err != nil {
@@ -444,7 +445,7 @@ func seedTestCatalog(ctx context.Context, db *repository.DB) error {
 	return err
 }
 
-// directAegisClient implements AegisMCPClient using direct service call
+// directAegisClient implements AegisMCPClient using direct service call.
 type directAegisClient struct {
 	gatewayService service.GatewayService
 }
@@ -457,6 +458,7 @@ func (c *directAegisClient) Purchase(ctx context.Context, params mcp.AegisPurcha
 	return &mcp.AegisPurchaseResult{
 		Allowed:         result.Allowed,
 		Reason:          result.Reason,
+		RuleFired:       result.RuleFired,
 		Status:          result.Status,
 		OrderID:         result.OrderID,
 		PaymentID:       result.PaymentID,

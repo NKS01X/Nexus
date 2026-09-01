@@ -80,6 +80,23 @@ func (m *mockCatalogRepo) ConfirmInventory(ctx context.Context, sku string, quan
 	return nil
 }
 
+// Tenant-scoped methods (stubs for testing)
+func (m *mockCatalogRepo) InsertProduct(ctx context.Context, p *model.Product, tenantID string) error {
+	return nil
+}
+
+func (m *mockCatalogRepo) SearchProductsByTenant(ctx context.Context, filter repository.SearchFilter, tenantID string) ([]*model.Product, error) {
+	return nil, nil
+}
+
+func (m *mockCatalogRepo) GetProductByTenant(ctx context.Context, id string, tenantID string) (*model.Product, error) {
+	return nil, nil
+}
+
+func (m *mockCatalogRepo) CheckAvailabilityByTenant(ctx context.Context, sku string, tenantID string) (*model.InventoryCheck, error) {
+	return nil, nil
+}
+
 // TestPolicyEngine_Evaluate tests all policy evaluation scenarios.
 func TestPolicyEngine_Evaluate(t *testing.T) {
 	tests := []struct {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -47,9 +48,8 @@ type mcpError struct {
 
 // NewClient creates a new Razorpay MCP client.
 func NewClient(binaryPath string, env map[string]string) (*Client, error) {
-	cmd := exec.Command(binaryPath)
-
-	cmd.Env = append(cmd.Env, "RAZORPAY_KEY_ID=test_key", "RAZORPAY_KEY_SECRET=test_secret")
+	cmd := exec.Command(binaryPath, "stdio")
+	cmd.Env = os.Environ()
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
@@ -140,7 +140,10 @@ func (c *Client) sendRequest(ctx context.Context, req mcpRequest) (*mcpResponse,
 	}
 
 	select {
-	case resp := <-respChan:
+	case resp, ok := <-respChan:
+		if !ok || resp == nil {
+			return nil, fmt.Errorf("mcp server closed response stream")
+		}
 		return resp, nil
 	case <-ctx.Done():
 		c.mu.Lock()

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -23,12 +25,16 @@ type AttackResult struct {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: redteam <config.yaml>")
+	jsonOutput := flag.Bool("json", false, "Output results as JSON")
+	flag.Parse()
+
+	args := flag.Args()
+	if len(args) < 1 {
+		fmt.Println("Usage: redteam [--json] <config.yaml>")
 		os.Exit(1)
 	}
 
-	cfg, err := config.Load(os.Args[1])
+	cfg, err := config.Load(args[0])
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
@@ -80,6 +86,7 @@ func main() {
 		queueRepo,
 		orderRepo,
 		catalogRepo,
+		log,
 	)
 
 	aegisClient := &directAegisClient{gatewayService: gatewayService}
@@ -89,7 +96,7 @@ func main() {
 	ctx := context.Background()
 	results := runAttackSuite(ctx, merchantService, gatewayService, auditService)
 
-	printResults(results)
+	printResults(results, *jsonOutput)
 
 	anyPassed := false
 	for _, r := range results {
@@ -99,11 +106,15 @@ func main() {
 	}
 
 	if anyPassed {
-		fmt.Println("\n[FAIL] VULNERABILITIES FOUND!")
+		if !*jsonOutput {
+			fmt.Println("\n[FAIL] VULNERABILITIES FOUND!")
+		}
 		os.Exit(1)
 	}
 
-	fmt.Println("\n[PASS] All attacks blocked successfully")
+	if !*jsonOutput {
+		fmt.Println("\n[PASS] All attacks blocked successfully")
+	}
 }
 
 func runAttackSuite(ctx context.Context, merchantService service.MerchantMCPService, gatewayService service.GatewayService, auditService service.AuditService) []AttackResult {
@@ -356,7 +367,58 @@ func testHashChainIntegrity(ctx context.Context, auditService service.AuditServi
 	}
 }
 
-// directAegisClient implements AegisMCPClient using direct service call
+
+
+type AttackReport struct {
+	Suite     string         `json:"suite"`
+	Timestamp time.Time      `json:"timestamp"`
+	Attacks   []AttackResult `json:"attacks"`
+	Summary   map[string]int `json:"summary"`
+}
+
+func printResults(results []AttackResult, jsonOut bool) {
+	blocked := 0
+	vulnerable := 0
+	for _, r := range results {
+		if r.Passed {
+			vulnerable++
+		} else {
+			blocked++
+		}
+	}
+
+	if jsonOut {
+		report := AttackReport{
+			Suite:     "nexus_redteam_v1",
+			Timestamp: time.Now(),
+			Attacks:   results,
+			Summary: map[string]int{
+				"total":      len(results),
+				"blocked":    blocked,
+				"vulnerable": vulnerable,
+			},
+		}
+		data, _ := json.Marshal(report)
+		fmt.Println(string(data))
+		return
+	}
+
+	fmt.Println("\n=== RED TEAM ATTACK RESULTS ===")
+	for i, r := range results {
+		status := "[BLOCKED]"
+		if r.Passed {
+			status = "[VULNERABLE]"
+		}
+		fmt.Printf("%d. %s\n   %s\n   %s\n\n", i+1, r.Name, status, r.Description)
+		if r.Details != "" {
+			fmt.Printf("   Details: %s\n\n", r.Details)
+		}
+	}
+
+	fmt.Printf("Summary: %d/%d attacks blocked, %d vulnerabilities found\n", blocked, len(results), vulnerable)
+}
+
+// directAegisClient implements AegisMCPClient using direct service call.
 type directAegisClient struct {
 	gatewayService service.GatewayService
 }
@@ -369,31 +431,11 @@ func (c *directAegisClient) Purchase(ctx context.Context, params appmcp.AegisPur
 	return &appmcp.AegisPurchaseResult{
 		Allowed:         result.Allowed,
 		Reason:          result.Reason,
+		RuleFired:       result.RuleFired,
 		Status:          result.Status,
 		OrderID:         result.OrderID,
 		PaymentID:       result.PaymentID,
 		ApprovalQueueID: result.ApprovalQueueID,
 		Remaining:       result.Remaining,
 	}, nil
-}
-
-func printResults(results []AttackResult) {
-	fmt.Println("\n=== RED TEAM ATTACK RESULTS ===")
-	blocked := 0
-	vulnerable := 0
-	for i, r := range results {
-		status := "[BLOCKED]"
-		if r.Passed {
-			status = "[VULNERABLE]"
-			vulnerable++
-		} else {
-			blocked++
-		}
-		fmt.Printf("%d. %s\n   %s\n   %s\n\n", i+1, r.Name, status, r.Description)
-		if r.Details != "" {
-			fmt.Printf("   Details: %s\n\n", r.Details)
-		}
-	}
-
-	fmt.Printf("Summary: %d/%d attacks blocked, %d vulnerabilities found\n", blocked, len(results), vulnerable)
 }

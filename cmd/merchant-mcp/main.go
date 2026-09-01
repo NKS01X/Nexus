@@ -48,12 +48,14 @@ func main() {
 
 	catalogRepo := repository.NewCatalogPG(db)
 	orderRepo := repository.NewOrderPG(db)
+	tenantRepo := repository.NewTenantPG(db)
 
 	aegisClient := NewMCPAegisClient(fmt.Sprintf("http://%s:%d", cfg.AegisGateway.Host, cfg.AegisGateway.Port))
 
 	merchantService := service.NewMerchantMCPService(catalogRepo, orderRepo, aegisClient)
+	tenantService := service.NewTenantService(tenantRepo, catalogRepo)
 
-	mcpServer := pkgmcp.NewMerchantServer(merchantService, log)
+	mcpServer := pkgmcp.NewMerchantServer(merchantService, tenantService, catalogRepo, log)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

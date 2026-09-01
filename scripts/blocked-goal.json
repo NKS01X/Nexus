@@ -1,0 +1,7 @@
+{
+  "query": "headphones",
+  "max_price_inr": 300000,
+  "category": "electronics",
+  "buyer_id": "demo_attacker_1",
+  "buyer_pincode": "400001"
+}

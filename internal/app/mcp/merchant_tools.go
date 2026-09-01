@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"encoding/json"
+
 	"github.com/razorpay/aegis/internal/app/model"
 )
 
@@ -55,8 +57,9 @@ type PurchaseParams struct {
 	ProductID      string `json:"product_id"`
 	SKU            string `json:"sku"`
 	Quantity       int    `json:"quantity"`
-	IdempotencyKey string `json:"idempotency_key"`
-	BuyerPincode   string `json:"buyer_pincode,omitempty"`
+	IdempotencyKey string          `json:"idempotency_key"`
+	BuyerPincode   string          `json:"buyer_pincode,omitempty"`
+	Metadata       json.RawMessage `json:"metadata,omitempty"`
 }
 
 // PurchaseResult holds the result of a purchase request.

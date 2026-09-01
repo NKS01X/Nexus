@@ -40,8 +40,8 @@ func TestApprovalQueuePG(t *testing.T) {
 			},
 			BuyerReasoning: "Need shoes for marathon",
 			Status:         model.ApprovalStatusPending,
-			CreatedAt:      time.Now(),
-			ExpiresAt:      time.Now().Add(24 * time.Hour),
+			CreatedAt:      time.Now().UTC(),
+			ExpiresAt:      time.Now().UTC().Add(24 * time.Hour),
 		}
 
 		err := repo.Enqueue(ctx, item)
@@ -84,8 +84,8 @@ func TestApprovalQueuePG(t *testing.T) {
 			},
 			PolicyDecision: model.PolicyDecision{Allowed: false, RuleFired: model.RuleFiredVelocityCap},
 			Status:         model.ApprovalStatusPending,
-			CreatedAt:      time.Now(),
-			ExpiresAt:      time.Now().Add(24 * time.Hour),
+			CreatedAt:      time.Now().UTC(),
+			ExpiresAt:      time.Now().UTC().Add(24 * time.Hour),
 		}
 		_ = repo.Enqueue(ctx, item)
 
@@ -130,8 +130,8 @@ func TestApprovalQueuePG(t *testing.T) {
 			ID: "expired_001", BuyerID: "buyer_3", SessionID: "session_3",
 			PurchaseRequest: model.PurchaseRequest{BuyerID: "buyer_3", SessionID: "session_3", SKU: "SKU-001", IdempotencyKey: "idem_exp"},
 			PolicyDecision:  model.PolicyDecision{Allowed: false, RuleFired: model.RuleFiredSpendCap},
-			Status:          model.ApprovalStatusPending, CreatedAt: time.Now().Add(-25 * time.Hour),
-			ExpiresAt: time.Now().Add(-1 * time.Hour),
+			Status:          model.ApprovalStatusPending, CreatedAt: time.Now().UTC().Add(-25 * time.Hour),
+			ExpiresAt: time.Now().UTC().Add(-1 * time.Hour),
 		}
 		_ = repo.Enqueue(ctx, expired)
 
@@ -139,8 +139,8 @@ func TestApprovalQueuePG(t *testing.T) {
 			ID: "pending_001", BuyerID: "buyer_4", SessionID: "session_4",
 			PurchaseRequest: model.PurchaseRequest{BuyerID: "buyer_4", SessionID: "session_4", SKU: "SKU-002", IdempotencyKey: "idem_pen"},
 			PolicyDecision:  model.PolicyDecision{Allowed: false, RuleFired: model.RuleFiredVelocityCap},
-			Status:          model.ApprovalStatusPending, CreatedAt: time.Now(),
-			ExpiresAt: time.Now().Add(24 * time.Hour),
+			Status:          model.ApprovalStatusPending, CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
 		}
 		_ = repo.Enqueue(ctx, pending)
 
@@ -161,8 +161,8 @@ func TestApprovalQueuePG(t *testing.T) {
 			ID: "buyer_item_001", BuyerID: "buyer_5", SessionID: "session_5",
 			PurchaseRequest: model.PurchaseRequest{BuyerID: "buyer_5", SessionID: "session_5", SKU: "SKU-003", IdempotencyKey: "idem_b5"},
 			PolicyDecision:  model.PolicyDecision{Allowed: false, RuleFired: model.RuleFiredCategoryBlocked},
-			Status:          model.ApprovalStatusPending, CreatedAt: time.Now(),
-			ExpiresAt: time.Now().Add(24 * time.Hour),
+			Status:          model.ApprovalStatusPending, CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
 		}
 		_ = repo.Enqueue(ctx, item)
 

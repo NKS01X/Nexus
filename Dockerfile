@@ -1,3 +1,10 @@
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/web/portal
+COPY web/portal/package*.json ./
+RUN npm ci
+COPY web/portal/ ./
+RUN npm run build
+
 FROM golang:1.23-alpine AS builder
 
 RUN apk add --no-cache git make gcc musl-dev
@@ -23,6 +30,8 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/seed-catalog ./cmd/seed-cata
 
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/migrate ./cmd/migrate
 
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/portal ./cmd/portal
+
 FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates postgresql-client tzdata
@@ -38,16 +47,17 @@ COPY --from=builder /bin/demo-buyer /usr/local/bin/demo-buyer
 COPY --from=builder /bin/redteam /usr/local/bin/redteam
 COPY --from=builder /bin/seed-catalog /usr/local/bin/seed-catalog
 COPY --from=builder /bin/migrate /usr/local/bin/migrate
+COPY --from=builder /bin/portal /usr/local/bin/portal
 
 COPY config.yaml /app/config.yaml
-COPY web/ /app/web/
+COPY --from=frontend-builder /app/web/portal/dist /app/web/portal/dist
 COPY migrations/ /app/migrations/
 
 RUN mkdir -p /app/data && chown -R aegis:aegis /app
 
 USER aegis
 
-EXPOSE 8081 8082 8083
+EXPOSE 8081 8082 8083 8084
 
 ENTRYPOINT ["/usr/local/bin/aegis-gateway"]
 CMD ["--config", "/app/config.yaml"]

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -11,6 +12,7 @@ import (
 type Config struct {
 	AegisGateway  AegisGatewayConfig  `yaml:"aegis_gateway"`
 	MerchantMCP   MerchantMCPConfig   `yaml:"merchant_mcp"`
+	Portal        PortalConfig        `yaml:"portal"`
 	Database      DatabaseConfig      `yaml:"database"`
 	Razorpay      RazorpayConfig      `yaml:"razorpay"`
 	RazorpayMCP   RazorpayMCPConfig   `yaml:"razorpay_mcp"`
@@ -30,6 +32,9 @@ type AegisGatewayConfig struct {
 type MerchantMCPConfig struct {
 	Host string `yaml:"host"`
 	Port int    `yaml:"port"`
+	// PublicBaseURL is the externally reachable base URL for the MCP server
+	// (e.g. https://mcp.example.com). When empty, http://<host>:<port> is used.
+	PublicBaseURL string `yaml:"public_base_url"`
 }
 
 // DatabaseConfig holds database configuration.
@@ -90,12 +95,21 @@ type ApprovalQueueConfig struct {
 	DefaultTTLHours int `yaml:"default_ttl_hours"`
 }
 
+// PortalConfig holds Portal server configuration.
+type PortalConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	AdminKey string `yaml:"admin_key"`
+}
+
 // LogConfig holds logging configuration.
 type LogConfig struct {
 	Level string `yaml:"level"`
 }
 
 // Load loads configuration from a YAML file with environment variable overrides.
+// Environment variables take precedence, enabling portable deployments where the
+// platform (Render, Heroku, containers) injects binding and credential values.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -107,14 +121,36 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	if dsn := os.Getenv("DB_PASSWORD"); dsn != "" {
-
+	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
+		cfg.Database.DSN = dsn
+	}
+	if host := os.Getenv("HOST"); host != "" {
+		cfg.AegisGateway.Host = host
+		cfg.MerchantMCP.Host = host
+		cfg.Portal.Host = host
+	}
+	if port := os.Getenv("PORT"); port != "" {
+		if p, err := strconv.Atoi(port); err == nil {
+			cfg.Portal.Port = p
+		}
+	}
+	if publicURL := os.Getenv("MCP_PUBLIC_BASE_URL"); publicURL != "" {
+		cfg.MerchantMCP.PublicBaseURL = publicURL
 	}
 	if keyID := os.Getenv("RAZORPAY_KEY_ID"); keyID != "" {
 		cfg.Razorpay.KeyID = keyID
 	}
 	if keySecret := os.Getenv("RAZORPAY_KEY_SECRET"); keySecret != "" {
 		cfg.Razorpay.KeySecret = keySecret
+	}
+	if mcpBin := os.Getenv("RAZORPAY_MCP_BINARY_PATH"); mcpBin != "" {
+		cfg.RazorpayMCP.BinaryPath = mcpBin
+	}
+	if adminKey := os.Getenv("NEXUS_ADMIN_KEY"); adminKey != "" {
+		cfg.Portal.AdminKey = adminKey
+	}
+	if cfg.Portal.AdminKey == "" {
+		cfg.Portal.AdminKey = "nexus_admin_default"
 	}
 
 	return &cfg, nil

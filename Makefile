@@ -1,4 +1,4 @@
-.PHONY: all build clean test docker-build docker-up docker-down
+.PHONY: all build clean test docker-build docker-up docker-down portal portal-build
 
 BIN_DIR=bin
 GO_BUILD=CGO_ENABLED=0 go build -ldflags="-s -w"
@@ -15,6 +15,7 @@ build:
 	$(GO_BUILD) -o $(BIN_DIR)/seed-catalog ./cmd/seed-catalog
 	$(GO_BUILD) -o $(BIN_DIR)/migrate ./cmd/migrate
 	$(GO_BUILD) -o $(BIN_DIR)/gateway ./cmd/gateway
+	$(GO_BUILD) -o $(BIN_DIR)/portal ./cmd/portal
 
 clean:
 	rm -rf $(BIN_DIR)
@@ -30,3 +31,12 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+portal:
+	go run cmd/portal/main.go config.yaml
+
+portal-build:
+	cd web/portal && npm install && npm run build
+	$(GO_BUILD) -o $(BIN_DIR)/portal ./cmd/portal
+
+build-all: build portal-build

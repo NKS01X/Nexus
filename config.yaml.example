@@ -5,6 +5,12 @@ aegis_gateway:
 merchant_mcp:
   host: "localhost"
   port: 8082
+  public_base_url: ""  # e.g. "https://mcp.example.com" when exposed via Cloudflare Tunnel; empty = internal host:port
+
+portal:
+  host: "localhost"
+  port: 8084
+  admin_key: "${NEXUS_ADMIN_KEY}"  # Portal admin authentication key
 
 database:
   dsn: "postgres://postgres:postgres@localhost:5432/aegis?sslmode=disable"
@@ -14,7 +20,7 @@ razorpay:
   key_secret: "${RAZORPAY_KEY_SECRET}"
 
 razorpay_mcp:
-  binary_path: "./razorpay-mcp-server"
+  binary_path: ""  # empty = mock payment client; set to a razorpay-mcp-server path for real payments
 
 policy:
   spend_cap_paisa: 300000        # ₹3,000 total per buyer/session

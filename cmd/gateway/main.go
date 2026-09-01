@@ -68,9 +68,10 @@ func main() {
 		queueRepo,
 		orderRepo,
 		catalogRepo,
+		log,
 	)
 
-	mcpServer := mcp.NewAegisServer(gatewayService, log)
+	mcpServer := mcp.NewAegisServer(gatewayService, auditService, log)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
