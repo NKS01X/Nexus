@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useAuth, useToast } from '../App'
+import { useAuth, useToast, safeJsonParse } from '../App'
 import Navbar from './Navbar'
-import { Canvas, useFrame } from '@react-three/fiber'
+import LoginGate from './LoginGate'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Float, Stars } from '@react-three/drei'
 import * as THREE from 'three'
 import gsap from 'gsap'
@@ -149,7 +150,6 @@ function CameraController() {
   return null
 }
 
-import { useThree } from '@react-three/fiber'
 
 export default function RedTeamPage() {
   const [running, setRunning] = useState(false)
@@ -162,7 +162,7 @@ export default function RedTeamPage() {
     setResults(null)
     try {
       const res = await authFetch('/api/redteam/run', { method: 'POST' })
-      const data = await res.json()
+      const data = await safeJsonParse(res)
 
       if (!res.ok) {
         if (data.attacks) {
@@ -183,18 +183,9 @@ export default function RedTeamPage() {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="merchants-page">
-        <Navbar />
-        <div className="container" style={{ display: 'flex', justifyContent: 'center', paddingTop: '80px' }}>
-          <div className="onboarding-card" style={{ maxWidth: '420px', width: '100%', textAlign: 'center' }}>
-            <h2 className="onboarding-title">Admin Access Required</h2>
-            <p className="onboarding-subtitle">Please login from the Merchants page first.</p>
-          </div>
-        </div>
-      </div>
-    )
+    return <LoginGate subtitle="Enter your admin key to run purchase safety simulations." />
   }
+
 
   return (
     <div className="merchants-page">

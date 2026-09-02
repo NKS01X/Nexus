@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useAuth, useToast } from '../App'
+import { useAuth, useToast, safeJsonParse } from '../App'
 
 export default function AuditTrail() {
   const [entries, setEntries] = useState([])
@@ -18,9 +18,9 @@ export default function AuditTrail() {
     try {
       const url = filterBuyer ? `/api/audit/trail?buyer_id=${encodeURIComponent(filterBuyer)}` : '/api/audit/entries'
       const res = await authFetch(url)
-      if (!res.ok) throw new Error('Failed to fetch audit trail')
-      const data = await res.json()
-      setEntries(data || [])
+      const data = await safeJsonParse(res)
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch audit trail')
+      setEntries(Array.isArray(data) ? data : [])
     } catch (err) {
       showToast(err.message, 'error')
     } finally {

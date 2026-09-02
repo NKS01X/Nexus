@@ -40,6 +40,16 @@ export function useToast() {
   return useContext(ToastContext)
 }
 
+export async function safeJsonParse(res) {
+  try {
+    const text = await res.text()
+    if (!text || !text.trim()) return {}
+    return JSON.parse(text)
+  } catch (err) {
+    return { error: `Invalid server response (${res.status})` }
+  }
+}
+
 // Auth Context
 const AuthContext = createContext()
 
@@ -54,8 +64,8 @@ export function AuthProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ admin_key: adminKey }),
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error || 'Authentication failed')
+    const data = await safeJsonParse(res)
+    if (!res.ok) throw new Error(data.error || `Authentication failed (${res.status})`)
     sessionStorage.setItem('aegis_admin_token', data.token)
     setToken(data.token)
     return data.token
@@ -101,15 +111,20 @@ function PageTransition({ children }) {
 
   return (
     <AnimatePresence mode="wait">
-      <motion.div key={location.pathname} initial="exit" animate="enter" exit="exit" variants={{
-        enter: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
-        exit: { opacity: 0, y: 20, transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] } },
-      }}>
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -12 }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        style={{ minHeight: '100vh' }}
+      >
         {children}
       </motion.div>
     </AnimatePresence>
   )
 }
+
 
 function App() {
   return (

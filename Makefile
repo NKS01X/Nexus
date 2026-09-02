@@ -40,3 +40,10 @@ portal-build:
 	$(GO_BUILD) -o $(BIN_DIR)/portal ./cmd/portal
 
 build-all: build portal-build
+
+podman-up:
+	bash scripts/podman-start.sh
+
+podman-down:
+	bash scripts/podman-stop.sh
+

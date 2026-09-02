@@ -1,9 +1,10 @@
 import React, { useRef, useMemo, useEffect, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Float, Text, Stars, Html } from '@react-three/drei'
-
+import Navbar from './Navbar'
 import * as THREE from 'three'
 import { LazyCanvas } from './CanvasWrapper'
+
 
 // Laptop model with screen showing the intent text
 function Laptop({ screenOpacity }) {
@@ -317,17 +318,21 @@ function AegisDemoScene() {
  */
 export default function AegisDemo() {
   return (
-    <div style={{ width: '100%', height: '100vh', background: 'var(--surface)', overflow: 'hidden' }}>
-      <LazyCanvas
-        threshold={0.1}
-        rootMargin='100px'
-        canvasProps={{
-          camera: { position: [0, 0, 12], fov: 55, near: 0.1, far: 100 },
-          gl: { antialias: true, alpha: true },
-        }}
-      >
-        <AegisDemoScene />
-      </LazyCanvas>
+    <div style={{ width: '100%', height: '100vh', background: 'var(--surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+      <Navbar />
+      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+        <LazyCanvas
+          threshold={0}
+          rootMargin='0px'
+          canvasProps={{
+            camera: { position: [0, 0, 12], fov: 55, near: 0.1, far: 100 },
+            gl: { antialias: true, alpha: true },
+          }}
+        >
+          <AegisDemoScene />
+        </LazyCanvas>
+      </div>
     </div>
   )
 }
+

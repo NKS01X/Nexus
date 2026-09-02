@@ -615,11 +615,16 @@ body {
 
 /* ── Onboarding Form 3D ── */
 .onboarding-card {
-  opacity: 0;
-  transform: translateY(30px);
+  opacity: 1;
+  transform: translateY(0);
   transition: all 0.8s var(--ease-out-expo);
 }
-.onboarding-card.visible {
+.onboarding-section .onboarding-card {
+  opacity: 0;
+  transform: translateY(30px);
+}
+.onboarding-card.visible,
+.onboarding-section .onboarding-card.visible {
   opacity: 1;
   transform: translateY(0);
 }

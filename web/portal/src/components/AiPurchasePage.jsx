@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import { useToast } from '../App'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { useToast, safeJsonParse } from '../App'
+import Navbar from './Navbar'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Float, Stars, Line } from '@react-three/drei'
 import * as THREE from 'three'
 import gsap from 'gsap'
@@ -227,13 +228,13 @@ export default function AiPurchasePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
       })
-      if (!resp.ok) throw new Error('Groq error')
-      const data = await resp.json()
+      const data = await safeJsonParse(resp)
+      if (!resp.ok) throw new Error(data.error || data.message || 'Groq error')
       setSuggestion(data.completion)
       showToast('Got AI suggestion', 'success')
     } catch (e) {
       console.error(e)
-      showToast('Failed to get suggestion', 'error')
+      showToast(e.message || 'Failed to get suggestion', 'error')
     } finally {
       setSuggestionLoading(false)
     }
@@ -304,7 +305,10 @@ export default function AiPurchasePage() {
   }
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '40px 24px' }}>
+    <div className="merchants-page">
+      <Navbar />
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '40px 24px' }}>
+
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: '60px' }}>
         <div className="section-label" style={{ color: 'var(--accent-purple)' }}>AI checkout demo</div>
@@ -451,5 +455,6 @@ export default function AiPurchasePage() {
         </div>
       </div>
     </div>
+  </div>
   )
 }
