@@ -1,109 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useToast, useAuth } from '../App'
+import { useToast, useAuth, safeJsonParse } from '../App'
 import Navbar from './Navbar'
 
-function LoginGate({ onLogin }) {
-  const [adminKey, setAdminKey] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const { login } = useAuth()
-  const { showToast } = useToast()
+import LoginGate from './LoginGate'
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!adminKey.trim()) return
-    setLoading(true)
-    setError('')
-    try {
-      await login(adminKey.trim())
-      showToast('Authenticated successfully')
-      if (onLogin) onLogin()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="merchants-page">
-      <Navbar />
-      <div className="container" style={{ display: 'flex', justifyContent: 'center', paddingTop: '80px' }}>
-        <div className="onboarding-card" style={{ maxWidth: '420px', width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <div style={{
-              width: '40px', height: '40px', borderRadius: '12px',
-              background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.25)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--accent-purple)',
-            }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0110 0v4" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="onboarding-title" style={{ fontSize: '20px', marginBottom: '0' }}>Admin Access</h2>
-            </div>
-          </div>
-          <p className="onboarding-subtitle" style={{ marginBottom: '28px' }}>
-            Enter your admin key to view provisioned merchants.
-          </p>
-
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label className="form-label">Admin Key</label>
-              <input
-                type="password"
-                className="form-input"
-                placeholder="Enter admin key"
-                value={adminKey}
-                onChange={(e) => setAdminKey(e.target.value)}
-                required
-                autoFocus
-                id="admin-key-input"
-              />
-
-            </div>
-
-            {error && (
-              <div style={{
-                padding: '10px 14px', borderRadius: '10px', marginBottom: '16px',
-                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                color: 'var(--accent-red)', fontSize: '13px', fontWeight: 500,
-              }}>
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ width: '100%' }}
-              disabled={loading || !adminKey.trim()}
-              id="admin-login-btn"
-            >
-              {loading ? (
-                <>
-                  <span className="spinner" style={{ width: 18, height: 18 }} />
-                  Authenticating...
-                </>
-              ) : (
-                <>
-                  Authenticate
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M5 12h14M12 5l7 7-7 7" />
-                  </svg>
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 export default function MerchantsPage() {
   const [merchants, setMerchants] = useState([])
@@ -121,7 +22,8 @@ export default function MerchantsPage() {
     setLoading(true)
     try {
       const res = await authFetch('/api/merchants')
-      const data = await res.json()
+      const data = await safeJsonParse(res)
+      if (!res.ok) throw new Error(data.error || 'Failed to load merchants')
       setMerchants(Array.isArray(data) ? data : [])
     } catch (err) {
       showToast(err.message || 'Failed to load merchants', 'error')

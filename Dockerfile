@@ -1,11 +1,11 @@
-FROM node:20-alpine AS frontend-builder
+FROM docker.io/library/node:20-alpine AS frontend-builder
 WORKDIR /app/web/portal
 COPY web/portal/package*.json ./
 RUN npm ci
 COPY web/portal/ ./
 RUN npm run build
 
-FROM golang:1.23-alpine AS builder
+FROM docker.io/library/golang:1.23-alpine AS builder
 
 RUN apk add --no-cache git make gcc musl-dev
 
@@ -32,7 +32,8 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/migrate ./cmd/migrate
 
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/portal ./cmd/portal
 
-FROM alpine:3.20
+FROM docker.io/library/alpine:3.20
+
 
 RUN apk add --no-cache ca-certificates postgresql-client tzdata
 
@@ -53,11 +54,12 @@ COPY config.yaml /app/config.yaml
 COPY --from=frontend-builder /app/web/portal/dist /app/web/portal/dist
 COPY migrations/ /app/migrations/
 
-RUN mkdir -p /app/data && chown -R aegis:aegis /app
+COPY scripts/entrypoint.sh /app/entrypoint.sh
 
+USER root
+RUN chmod +x /app/entrypoint.sh && chown -R aegis:aegis /app
 USER aegis
 
 EXPOSE 8081 8082 8083 8084
 
-ENTRYPOINT ["/usr/local/bin/aegis-gateway"]
-CMD ["--config", "/app/config.yaml"]
+ENTRYPOINT ["/app/entrypoint.sh"]

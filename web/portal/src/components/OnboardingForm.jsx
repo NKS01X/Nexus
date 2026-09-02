@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useToast } from '../App'
+import { useToast, safeJsonParse } from '../App'
 import ResultCard from './ResultCard'
 
 const PLATFORMS = [
@@ -74,7 +74,7 @@ export default function OnboardingForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), platform }),
       })
-      const data = await res.json()
+      const data = await safeJsonParse(res)
       if (!res.ok) throw new Error(data.error || 'Failed to provision')
       setResult(data)
       showToast('Merchant provisioned successfully!')

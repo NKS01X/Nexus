@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { useToast, useAuth } from '../App'
+import { useToast, useAuth, safeJsonParse } from '../App'
 import Navbar from './Navbar'
 import AuditTrail from './AuditTrail'
+import LoginGate from './LoginGate'
 
 export default function ApprovalsPage() {
+
   const [pending, setPending] = useState([])
   const [loading, setLoading] = useState(true)
   const [verifyResult, setVerifyResult] = useState(null)
@@ -21,9 +23,9 @@ export default function ApprovalsPage() {
     setLoading(true)
     try {
       const res = await authFetch('/api/approvals')
-      if (!res.ok) throw new Error('Failed to fetch approvals')
-      const data = await res.json()
-      setPending(data || [])
+      const data = await safeJsonParse(res)
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch approvals')
+      setPending(Array.isArray(data) ? data : [])
     } catch (err) {
       showToast(err.message, 'error')
     } finally {
@@ -38,8 +40,8 @@ export default function ApprovalsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, note })
       })
+      const err = await safeJsonParse(res)
       if (!res.ok) {
-        const err = await res.json()
         throw new Error(err.error || `Failed to ${action}`)
       }
       showToast(`Request ${action}d successfully`)
@@ -53,8 +55,8 @@ export default function ApprovalsPage() {
     setVerifying(true)
     try {
       const res = await authFetch('/api/audit/verify')
-      if (!res.ok) throw new Error('Failed to verify chain')
-      const data = await res.json()
+      const data = await safeJsonParse(res)
+      if (!res.ok) throw new Error(data.error || 'Failed to verify chain')
       setVerifyResult(data)
       if (data.chain_valid) {
         showToast('Audit chain is valid', 'success')
@@ -69,18 +71,9 @@ export default function ApprovalsPage() {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="merchants-page">
-        <Navbar />
-        <div className="container" style={{ display: 'flex', justifyContent: 'center', paddingTop: '80px' }}>
-          <div className="onboarding-card" style={{ maxWidth: '420px', width: '100%', textAlign: 'center' }}>
-            <h2 className="onboarding-title">Admin Access Required</h2>
-            <p className="onboarding-subtitle">Please login from the Merchants page first.</p>
-          </div>
-        </div>
-      </div>
-    )
+    return <LoginGate subtitle="Enter your admin key to view and manage approval requests." />
   }
+
 
   return (
     <div className="merchants-page">

@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
+
 	"syscall"
 	"time"
 
@@ -299,18 +301,33 @@ func main() {
 		handleGetMerchant(w, r, tenantRepo, log, id)
 	})
 
-	// Serve static React app
-	// Serve SPA static files with fallback to index.html
-staticFS := http.FileServer(http.Dir("./web/portal/dist"))
-mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-    // If the path corresponds to an existing file, serve it directly
-    if _, err := os.Stat("./web/portal/dist" + r.URL.Path); err == nil && !strings.HasSuffix(r.URL.Path, "/") {
-        staticFS.ServeHTTP(w, r)
-        return
-    }
-    // Fallback: serve index.html for client‑side routing
-    http.ServeFile(w, r, "./web/portal/dist/index.html")
-})
+	// Resolve dist directory path (supports running binary from project root or bin/)
+	distDir := "./web/portal/dist"
+	if _, err := os.Stat(distDir); os.IsNotExist(err) {
+		if exePath, exeErr := os.Executable(); exeErr == nil {
+			exeDir := filepath.Dir(exePath)
+			candidate := filepath.Join(exeDir, "..", "web", "portal", "dist")
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				distDir = candidate
+			}
+		}
+	}
+
+	staticFS := http.FileServer(http.Dir(distDir))
+	indexPath := filepath.Join(distDir, "index.html")
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		reqPath := filepath.Clean(r.URL.Path)
+		filePath := filepath.Join(distDir, reqPath)
+		fi, err := os.Stat(filePath)
+		if err == nil && !fi.IsDir() {
+			staticFS.ServeHTTP(w, r)
+			return
+		}
+		// Fallback to index.html for client-side routing (e.g., /merchants, /approvals, /redteam)
+		http.ServeFile(w, r, indexPath)
+	})
+
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", cfg.Portal.Host, cfg.Portal.Port),
