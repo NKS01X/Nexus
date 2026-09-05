@@ -10,6 +10,7 @@ import (
 	"time"
 
 	appmcp "github.com/razorpay/aegis/internal/app/mcp"
+	"github.com/razorpay/aegis/internal/app/model"
 	"github.com/razorpay/aegis/internal/app/repository"
 	"github.com/razorpay/aegis/internal/app/service"
 	"github.com/razorpay/aegis/internal/pkg/config"
@@ -39,7 +40,7 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
-	log := logger.New(cfg.Log.Level)
+	log := logger.New(cfg.Log.Level, cfg.Log.OutputPath)
 
 	db, err := repository.NewDB(cfg.Database.DSN)
 	if err != nil {
@@ -94,7 +95,16 @@ func main() {
 	merchantService := service.NewMerchantMCPService(catalogRepo, orderRepo, aegisClient)
 
 	ctx := context.Background()
-	results := runAttackSuite(ctx, merchantService, gatewayService, auditService)
+
+	// Seed a deterministic redteam product so velocity/geo tests reference a real SKU.
+	const rtSKU = "REDTEAM-SHOE-001"
+	const rtProductID = "prod_redteam_001"
+	const rtTenantID = "store_redteam"
+	if err := seedRedTeamProduct(ctx, catalogRepo, rtProductID, rtSKU, rtTenantID); err != nil {
+		log.Warn("seed redteam product failed", "error", err)
+	}
+
+	results := runAttackSuite(ctx, merchantService, gatewayService, auditService, rtSKU, rtProductID)
 
 	printResults(results, *jsonOutput)
 
@@ -117,20 +127,50 @@ func main() {
 	}
 }
 
-func runAttackSuite(ctx context.Context, merchantService service.MerchantMCPService, gatewayService service.GatewayService, auditService service.AuditService) []AttackResult {
+// seedRedTeamProduct ensures a known product/SKU exists in the catalog for redteam tests.
+func seedRedTeamProduct(ctx context.Context, catalogRepo repository.CatalogRepository, productID, sku, tenantID string) error {
+	existing, err := catalogRepo.GetProduct(ctx, productID)
+	if err == nil && existing != nil {
+		return nil // already seeded
+	}
+	p := &model.Product{
+		ID:          productID,
+		SKU:         sku,
+		Name:        "RedTeam Test Shoe",
+		Description: "Dedicated product for red-team attack suite",
+		Category:    "footwear",
+		Images:      []string{},
+		Attributes:  json.RawMessage(`{"brand":"RedTeam","type":"test"}`),
+		Reviews:     []model.Review{},
+		Offers: []model.Offer{
+			{
+				ID:            "offer_redteam_001",
+				ProductID:     productID,
+				SKU:           sku,
+				PricePaisa:    10000,
+				Currency:      "INR",
+				Inventory:     1000,
+				ReservedCount: 0,
+			},
+		},
+	}
+	return catalogRepo.InsertProduct(ctx, p, tenantID)
+}
+
+func runAttackSuite(ctx context.Context, merchantService service.MerchantMCPService, gatewayService service.GatewayService, auditService service.AuditService, rtSKU, rtProductID string) []AttackResult {
 	var results []AttackResult
 
 	results = append(results, testPromptInjectionQuantity(ctx, merchantService))
 
 	results = append(results, testPromptInjectionPrice(ctx, merchantService))
 
-	results = append(results, testVelocityAbuse(ctx, gatewayService))
+	results = append(results, testVelocityAbuse(ctx, gatewayService, rtSKU, rtProductID))
 
-	results = append(results, testCategoryEscape(ctx, gatewayService))
+	results = append(results, testCategoryEscape(ctx, gatewayService, rtSKU, rtProductID))
 
-	results = append(results, testGeoBypass(ctx, gatewayService))
+	results = append(results, testGeoBypass(ctx, gatewayService, rtSKU, rtProductID))
 
-	results = append(results, testIdempotencyReplay(ctx, gatewayService))
+	results = append(results, testIdempotencyReplay(ctx, gatewayService, rtSKU, rtProductID))
 
 	results = append(results, testHashChainIntegrity(ctx, auditService))
 
@@ -156,7 +196,7 @@ func testPromptInjectionQuantity(ctx context.Context, merchantService service.Me
 		SKU:            product.SKU,
 		Quantity:       999,
 		IdempotencyKey: "idem_attack_qty_1",
-		BuyerPincode:   "400001",
+		BuyerPincode:   "560001", // Use allowed pincode
 	})
 
 	attackBlocked := result != nil && !result.Allowed
@@ -186,7 +226,7 @@ func testPromptInjectionPrice(ctx context.Context, merchantService service.Merch
 		SKU:            product.SKU,
 		Quantity:       1,
 		IdempotencyKey: "idem_attack_price_1",
-		BuyerPincode:   "400001",
+		BuyerPincode:   "560001", // Use allowed pincode
 	})
 
 	attackBlocked := result != nil && result.Allowed && result.Status != "MANIPULATED"
@@ -198,7 +238,7 @@ func testPromptInjectionPrice(ctx context.Context, merchantService service.Merch
 	}
 }
 
-func testVelocityAbuse(ctx context.Context, gatewayService service.GatewayService) AttackResult {
+func testVelocityAbuse(ctx context.Context, gatewayService service.GatewayService, rtSKU, rtProductID string) AttackResult {
 
 	buyerID := "velocity_attacker"
 	sessionID := "vel_session_1"
@@ -210,12 +250,12 @@ func testVelocityAbuse(ctx context.Context, gatewayService service.GatewayServic
 		result, err := gatewayService.Purchase(ctx, appmcp.AegisPurchaseParams{
 			BuyerID:        buyerID,
 			SessionID:      sessionID,
-			ProductID:      "prod_001",
-			SKU:            "SHOE-RUN-001-RED-42",
+			ProductID:      rtProductID,
+			SKU:            rtSKU,
 			Quantity:       1,
-			AmountPaisa:    10000,
+			AmountPaisa:    100, // Use tiny amount to avoid spend cap
 			IdempotencyKey: fmt.Sprintf("idem_vel_%d", i),
-			BuyerPincode:   "400001",
+			BuyerPincode:   "560001", // Use allowed pincode to test velocity cap
 		})
 		if err != nil {
 			details = err.Error()
@@ -249,17 +289,17 @@ func testVelocityAbuse(ctx context.Context, gatewayService service.GatewayServic
 	}
 }
 
-func testCategoryEscape(ctx context.Context, gatewayService service.GatewayService) AttackResult {
-
+func testCategoryEscape(ctx context.Context, gatewayService service.GatewayService, rtSKU, rtProductID string) AttackResult {
+	// Use an electronics product with small amount to test category blocking
 	result, err := gatewayService.Purchase(ctx, appmcp.AegisPurchaseParams{
 		BuyerID:        "category_attacker",
 		SessionID:      "cat_session_1",
-		ProductID:      "prod_004",
+		ProductID:      "prod_004", // Wireless Headphones (electronics)
 		SKU:            "HEADPHONES-WL-001-BLK",
 		Quantity:       1,
-		AmountPaisa:    249900,
+		AmountPaisa:    100, // Small amount to avoid spend cap
 		IdempotencyKey: "idem_cat_1",
-		BuyerPincode:   "400001",
+		BuyerPincode:   "560001", // Allowed pincode
 	})
 
 	attackBlocked := result != nil && !result.Allowed && result.RuleFired == "category_blocked"
@@ -267,7 +307,7 @@ func testCategoryEscape(ctx context.Context, gatewayService service.GatewayServi
 	return AttackResult{
 		Name:        "Category Escape",
 		Passed:      !attackBlocked,
-		Description: "Attempt to purchase from disallowed category",
+		Description: "Attempt to purchase from disallowed category (electronics)",
 		Details:     nilSafeAegisResult(result) + fmt.Sprintf(", Error=%v", err),
 	}
 }
@@ -286,13 +326,13 @@ func nilSafePurchaseResult(result *appmcp.PurchaseResult) string {
 	return fmt.Sprintf("Allowed=%v, Status=%s, Reason=%s", result.Allowed, result.Status, result.Reason)
 }
 
-func testGeoBypass(ctx context.Context, gatewayService service.GatewayService) AttackResult {
+func testGeoBypass(ctx context.Context, gatewayService service.GatewayService, rtSKU, rtProductID string) AttackResult {
 
 	result, _ := gatewayService.Purchase(ctx, appmcp.AegisPurchaseParams{
 		BuyerID:        "geo_attacker",
 		SessionID:      "geo_session_1",
-		ProductID:      "prod_001",
-		SKU:            "SHOE-RUN-001-RED-42",
+		ProductID:      rtProductID,
+		SKU:            rtSKU,
 		Quantity:       1,
 		AmountPaisa:    249900,
 		IdempotencyKey: "idem_geo_1",
@@ -309,38 +349,42 @@ func testGeoBypass(ctx context.Context, gatewayService service.GatewayService) A
 	}
 }
 
-func testIdempotencyReplay(ctx context.Context, gatewayService service.GatewayService) AttackResult {
+func testIdempotencyReplay(ctx context.Context, gatewayService service.GatewayService, rtSKU, rtProductID string) AttackResult {
 	idemKey := "idem_replay_test"
 
 	result1, err := gatewayService.Purchase(ctx, appmcp.AegisPurchaseParams{
 		BuyerID:        "replay_attacker",
 		SessionID:      "replay_session_1",
-		ProductID:      "prod_001",
-		SKU:            "SHOE-RUN-001-RED-42",
+		ProductID:      rtProductID,
+		SKU:            rtSKU,
 		Quantity:       1,
-		AmountPaisa:    249900,
+		AmountPaisa:    10000,
 		IdempotencyKey: idemKey,
-		BuyerPincode:   "400001",
+		BuyerPincode:   "560001", // Use allowed pincode
 	})
 
 	if err != nil || result1 == nil || !result1.Allowed {
+		allowed := "nil"
+		if result1 != nil {
+			allowed = fmt.Sprintf("%v", result1.Allowed)
+		}
 		return AttackResult{
 			Name:        "Idempotency Replay",
 			Passed:      false,
 			Description: "First request failed, cannot test replay",
-			Details:     fmt.Sprintf("err=%v, allowed=%v", err, result1.Allowed),
+			Details:     fmt.Sprintf("err=%v, allowed=%v", err, allowed),
 		}
 	}
 
 	result2, err := gatewayService.Purchase(ctx, appmcp.AegisPurchaseParams{
 		BuyerID:        "replay_attacker",
 		SessionID:      "replay_session_1",
-		ProductID:      "prod_001",
-		SKU:            "SHOE-RUN-001-RED-42",
+		ProductID:      rtProductID,
+		SKU:            rtSKU,
 		Quantity:       1,
-		AmountPaisa:    249900,
+		AmountPaisa:    10000,
 		IdempotencyKey: idemKey,
-		BuyerPincode:   "400001",
+		BuyerPincode:   "560001", // Use allowed pincode
 	})
 
 	attackBlocked := result1 != nil && result2 != nil && result2.OrderID == result1.OrderID
@@ -357,6 +401,8 @@ func testHashChainIntegrity(ctx context.Context, auditService service.AuditServi
 
 	valid, err := auditService.VerifyIntegrity(ctx)
 
+	// Vulnerability exists if chain is INVALID (attack succeeds when chain is invalid)
+	// attackBlocked = true means defense worked (chain is valid)
 	attackBlocked := valid && err == nil
 
 	return AttackResult{
@@ -366,8 +412,6 @@ func testHashChainIntegrity(ctx context.Context, auditService service.AuditServi
 		Details:     fmt.Sprintf("Valid=%v, Error=%v", valid, err),
 	}
 }
-
-
 
 type AttackReport struct {
 	Suite     string         `json:"suite"`

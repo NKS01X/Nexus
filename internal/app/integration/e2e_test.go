@@ -37,7 +37,7 @@ func TestE2EPurchaseFlow(t *testing.T) {
 		t.Fatalf("load config: %v", err)
 	}
 
-	log := logger.New(cfg.Log.Level)
+	log := logger.New(cfg.Log.Level, cfg.Log.OutputPath)
 	_ = log
 
 	db, err := repository.NewDB(cfg.Database.DSN)

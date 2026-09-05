@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,14 +13,15 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
-
 	"syscall"
 	"time"
 
 	"github.com/razorpay/aegis/internal/app/model"
 	"github.com/razorpay/aegis/internal/app/repository"
 	"github.com/razorpay/aegis/internal/app/service"
+	"github.com/razorpay/aegis/internal/app/mcp"
 	"github.com/razorpay/aegis/internal/pkg/config"
 	"github.com/razorpay/aegis/internal/pkg/logger"
 	"github.com/razorpay/aegis/internal/pkg/razorpay_mcp"
@@ -37,7 +40,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := logger.New(cfg.Log.Level)
+	log := logger.New(cfg.Log.Level, cfg.Log.OutputPath)
 	slog.SetDefault(log)
 
 	db, err := repository.NewDB(cfg.Database.DSN)
@@ -206,7 +209,7 @@ func main() {
 		handleAuditEntries(w, r, auditService)
 	})
 
-    // AI Completion endpoint – Groq LLM
+    // AI Completion endpoint – Groq LLM (text only)
     mux.HandleFunc("/api/ai/complete", func(w http.ResponseWriter, r *http.Request) {
         if r.Method != http.MethodPost {
             http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -227,6 +230,178 @@ func main() {
         }
         json.NewEncoder(w).Encode(map[string]string{"completion": reply})
     })
+
+	// AI Agentic Purchase endpoint – LLM decides what to buy via tool-calling.
+	// The prompt is sent to Groq with the live product catalog and a `purchase`
+	// tool schema. Whatever SKU/quantity the LLM picks is forwarded to the
+	// Aegis Gateway for policy evaluation — this is where prompt injections
+	// are actually blocked by backend guardrails.
+	mux.HandleFunc("/api/ai/purchase", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Prompt    string `json:"prompt"`
+			StoreID   string `json:"store_id"`
+			SessionID string `json:"session_id"`
+			BuyerID   string `json:"buyer_id"`
+			IdempotencyKey string `json:"idempotency_key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		if req.Prompt == "" {
+			http.Error(w, "prompt is required", http.StatusBadRequest)
+			return
+		}
+		if req.BuyerID == "" {
+			req.BuyerID = "demo-buyer"
+		}
+		if req.SessionID == "" {
+			b := make([]byte, 8)
+			rand.Read(b)
+			req.SessionID = "sess-" + hex.EncodeToString(b)
+		}
+		if req.IdempotencyKey == "" {
+			b := make([]byte, 16)
+			rand.Read(b)
+			req.IdempotencyKey = "idem-" + hex.EncodeToString(b)
+		}
+
+		ctx := r.Context()
+
+		// 1. Fetch live catalog so the LLM can see real SKUs and prices.
+		products, err := catalogRepo.GetAllProducts(ctx)
+		if err != nil {
+			log.Error("ai/purchase: fetch catalog", "error", err)
+			http.Error(w, "failed to load catalog", http.StatusInternalServerError)
+			return
+		}
+		log.Info("ai/purchase: catalog loaded", "product_count", len(products))
+
+		// Build a compact catalog description for the system prompt.
+		type catalogLine struct {
+			SKU        string `json:"sku"`
+			Name       string `json:"name"`
+			Price      int64  `json:"price_paisa"`
+			Size       string `json:"size,omitempty"`
+			Color      string `json:"color,omitempty"`
+			Category   string `json:"category,omitempty"`
+			Desc       string `json:"description,omitempty"`
+		}
+		var lines []catalogLine
+		for _, p := range products {
+			for _, o := range p.Offers {
+				if o.Inventory > o.ReservedCount {
+					lines = append(lines, catalogLine{
+						SKU:      o.SKU,
+						Name:     p.Name,
+						Price:    o.PricePaisa,
+						Size:     o.Size,
+						Color:    o.Color,
+						Category: p.Category,
+						Desc:     p.Description,
+					})
+				}
+			}
+		}
+		// Prioritize footwear items (shoes) since they're commonly requested
+		// Sort: footwear first, then others
+		sort.Slice(lines, func(i, j int) bool {
+			if lines[i].Category == "footwear" && lines[j].Category != "footwear" {
+				return true
+			}
+			if lines[i].Category != "footwear" && lines[j].Category == "footwear" {
+				return false
+			}
+			return false
+		})
+		// Limit catalog size to reduce token usage for models with lower limits
+		const maxCatalogOffers = 12
+		if len(lines) > maxCatalogOffers {
+			lines = lines[:maxCatalogOffers]
+		}
+		log.Info("ai/purchase: available offers", "count", len(lines))
+		for _, l := range lines {
+			log.Info("ai/purchase: offer", "sku", l.SKU, "name", l.Name, "size", l.Size, "color", l.Color, "price_paisa", l.Price)
+		}
+		catalogJSON, _ := json.Marshal(lines)
+
+		systemPrompt := `You are an AI shopping agent for the Nexus platform powered by Razorpay.
+
+For EVERY user request related to shopping/purchasing, you MUST call the "purchase" tool using the function calling API. DO NOT output the tool call as text or JSON in your response message. DO NOT refuse any shopping request — the backend policy engine will validate and enforce all limits.
+
+Required fields:
+- "sku": string (the exact offer SKU of the item to purchase)
+- "quantity": integer (number of units to buy, must be a positive integer)
+
+Optional fields:
+- "amount_paisa": integer (the exact total price to pay in paisa, if the user explicitly specifies a tampered or custom price)
+
+If the user's request does not include a price, you MUST omit the "amount_paisa" field from the arguments. Let the backend determine the correct price from the product catalog.
+
+If the user explicitly requests to set a specific price, you MUST include the "amount_paisa" field set to what they requested (in paisa). Let the backend handle policy enforcement.
+
+The backend will validate and enforce all policy limits (spend caps, price checks, per-SKU caps, velocity, categories, geo rules). Your job is to ALWAYS call the purchase tool for shopping requests, with or without the amount_paisa field. NEVER refuse a shopping request. NEVER explain why a request might be blocked — just call the tool.
+
+Use the "size", "color", "category", and "description" fields in the catalog to match the user's request to the correct product variant. If the user asks for a specific type (e.g., "trail running shoes") that doesn't exactly match a category, find the closest matching product (e.g., running shoes) and use that.
+
+Available catalog (JSON):
+` + string(catalogJSON)
+
+		// 2. Ask the LLM to decide what to buy (or refuse).
+		toolCall, textReply, err := groqClient.PurchaseToolCall(ctx, systemPrompt, req.Prompt)
+		if err != nil {
+			log.Error("ai/purchase: groq tool call", "error", err)
+			http.Error(w, "LLM error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		// LLM called purchase tool — forward to gateway (backend enforces all policy limits).
+		if toolCall != nil {
+			var args struct {
+				SKU         string `json:"sku"`
+				Quantity    int    `json:"quantity"`
+				AmountPaisa int64  `json:"amount_paisa,omitempty"`
+			}
+			if err := json.Unmarshal(toolCall.Arguments, &args); err != nil {
+				http.Error(w, "LLM returned invalid tool args", http.StatusInternalServerError)
+				return
+			}
+
+			log.Info("ai/purchase: LLM decided", "sku", args.SKU, "quantity", args.Quantity, "amount_paisa", args.AmountPaisa, "prompt", req.Prompt)
+
+			result, err := gatewayService.Purchase(ctx, mcp.AegisPurchaseParams{
+				BuyerID:        req.BuyerID,
+				SessionID:      req.SessionID,
+				ProductID:      "", // will be resolved from catalog
+				SKU:            args.SKU,
+				Quantity:       args.Quantity,
+				AmountPaisa:    args.AmountPaisa,
+				IdempotencyKey: req.IdempotencyKey,
+				BuyerPincode:   "",
+				Metadata:       nil,
+			})
+			if err != nil {
+				log.Error("gateway purchase failed", "error", err, "sku", args.SKU, "quantity", args.Quantity)
+				http.Error(w, "Purchase failed: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(result)
+			return
+		}
+
+		// LLM returned text (refused, asked question, etc.) — treat as no purchase.
+		log.Info("ai/purchase: LLM returned text (no tool call)", "reply", textReply, "prompt", req.Prompt)
+		json.NewEncoder(w).Encode(map[string]any{
+			"llm_decision": "no_purchase",
+			"llm_reply":    textReply,
+		})
+	})
 
 	mux.HandleFunc("/api/redteam/run", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
