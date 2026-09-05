@@ -87,6 +87,27 @@ func (s *GatewayServiceImpl) Purchase(ctx context.Context, params mcp.AegisPurch
 		}, nil
 	}
 
+	// Resolve price: if amount_paisa is 0, use catalog price * quantity.
+	// This handles cases where the LLM doesn't specify a price (e.g. "buy shoes")
+	// and lets the backend determine the correct price from the product catalog.
+	if req.AmountPaisa == 0 {
+		product, err := s.catalogRepo.GetProductBySKU(ctx, req.SKU)
+		if err != nil {
+			return nil, fmt.Errorf("get product by sku: %w", err)
+		}
+		if product != nil {
+			for _, offer := range product.Offers {
+				if offer.SKU == req.SKU && offer.Inventory > offer.ReservedCount {
+					req.AmountPaisa = offer.PricePaisa * int64(req.Quantity)
+					break
+				}
+			}
+			if req.AmountPaisa == 0 && len(product.Offers) > 0 {
+				req.AmountPaisa = product.Offers[0].PricePaisa * int64(req.Quantity)
+			}
+		}
+	}
+
 	if err := s.policyEngine.IncrementRequestCount(ctx, req.BuyerID, req.SessionID); err != nil {
 		return nil, fmt.Errorf("increment request count: %w", err)
 	}
@@ -266,7 +287,18 @@ func (s *GatewayServiceImpl) executePayment(ctx context.Context, req *model.Purc
 		return "", "", fmt.Errorf("%w: %v", ErrOrderCreationFailed, err)
 	}
 
-	captureResp, err := s.razorpayClient.CapturePayment(ctx, orderResp.OrderID)
+	// CapturePaymentWithAmount passes the required amount and currency fields to the
+	// real Razorpay MCP capture_payment tool. We pass the order ID here; in a live
+	// integration this would be replaced by the payment ID from InitiatePayment.
+	type captureWithAmount interface {
+		CapturePaymentWithAmount(ctx context.Context, paymentID string, amountPaisa int64, currency string) (*CapturePaymentResponse, error)
+	}
+	var captureResp *CapturePaymentResponse
+	if cwa, ok := s.razorpayClient.(captureWithAmount); ok {
+		captureResp, err = cwa.CapturePaymentWithAmount(ctx, orderResp.OrderID, req.AmountPaisa, "INR")
+	} else {
+		captureResp, err = s.razorpayClient.CapturePayment(ctx, orderResp.OrderID)
+	}
 	if err != nil {
 		return "", "", fmt.Errorf("%w: %v", ErrPaymentCaptureFailed, err)
 	}

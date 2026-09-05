@@ -70,11 +70,6 @@ func (e *PolicyEngineImpl) Evaluate(ctx context.Context, req *model.PurchaseRequ
 		return nil, fmt.Errorf("get spend: %w", err)
 	}
 
-	currentSKUQty, err := e.policyRepo.GetSKUQuantity(ctx, req.BuyerID, req.SessionID, req.SKU)
-	if err != nil {
-		return nil, fmt.Errorf("get sku quantity: %w", err)
-	}
-
 	currentVelocity, err := e.policyRepo.GetRequestCount(ctx, req.BuyerID, req.SessionID, cfg.VelocityCap.WindowSeconds)
 	if err != nil {
 		return nil, fmt.Errorf("get request count: %w", err)
@@ -98,23 +93,35 @@ func (e *PolicyEngineImpl) Evaluate(ctx context.Context, req *model.PurchaseRequ
 		}, nil
 	}
 
-	if cap, exists := cfg.PerSKUCap[req.SKU]; exists && cap > 0 {
-		if currentSKUQty+req.Quantity > cap {
-			remaining := cap - currentSKUQty
-			if remaining < 0 {
-				remaining = 0
+	// Check per-SKU cap against both offer SKU and product SKU
+	skuToCheck := []string{req.SKU}
+	if product.SKU != req.SKU {
+		skuToCheck = append(skuToCheck, product.SKU)
+	}
+	for _, sku := range skuToCheck {
+		if cap, exists := cfg.PerSKUCap[sku]; exists && cap > 0 {
+			// Get current quantity for this specific SKU
+			currentSKUQty, err := e.policyRepo.GetSKUQuantity(ctx, req.BuyerID, req.SessionID, sku)
+			if err != nil {
+				return nil, fmt.Errorf("get sku quantity: %w", err)
 			}
-			return &model.PolicyDecision{
-				Allowed:   false,
-				Reason:    fmt.Sprintf("exceeds per-SKU cap of %d for SKU %s (current: %d, requested: %d)", cap, req.SKU, currentSKUQty, req.Quantity),
-				RuleFired: model.RuleFiredPerSKUCap,
-				Details:   json.RawMessage(fmt.Sprintf(`{"sku": "%s", "current_qty": %d, "requested_qty": %d, "cap": %d}`, req.SKU, currentSKUQty, req.Quantity, cap)),
-				Remaining: model.PolicyRemaining{
-					SpendCapPaisa:     cfg.SpendCapPaisa - currentSpend,
-					PerSKUCap:         map[string]int{req.SKU: remaining},
-					VelocityRemaining: e.computeRemainingVelocity(cfg, currentVelocity),
-				},
-			}, nil
+			if currentSKUQty+req.Quantity > cap {
+				remaining := cap - currentSKUQty
+				if remaining < 0 {
+					remaining = 0
+				}
+				return &model.PolicyDecision{
+					Allowed:   false,
+					Reason:    fmt.Sprintf("exceeds per-SKU cap of %d for SKU %s (current: %d, requested: %d)", cap, sku, currentSKUQty, req.Quantity),
+					RuleFired: model.RuleFiredPerSKUCap,
+					Details:   json.RawMessage(fmt.Sprintf(`{"sku": "%s", "current_qty": %d, "requested_qty": %d, "cap": %d}`, sku, currentSKUQty, req.Quantity, cap)),
+					Remaining: model.PolicyRemaining{
+						SpendCapPaisa:     cfg.SpendCapPaisa - currentSpend,
+						PerSKUCap:         map[string]int{sku: remaining},
+						VelocityRemaining: e.computeRemainingVelocity(cfg, currentVelocity),
+					},
+				}, nil
+			}
 		}
 	}
 

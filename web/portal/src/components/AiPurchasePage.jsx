@@ -7,6 +7,132 @@ import * as THREE from 'three'
 import gsap from 'gsap'
 import { LazyCanvas } from './CanvasWrapper'
 
+// Lightweight inline markdown renderer — no external deps
+function MarkdownView({ text }) {
+  if (!text) return null
+
+  // Escape HTML to prevent XSS
+  const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+
+  // Inline formats: **bold**, *italic*, `code`
+  const inlineFormat = (raw) =>
+    esc(raw)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code style="background:rgba(168,85,247,0.15);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:12px">$1</code>')
+
+  const lines = text.split('\n')
+  const blocks = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+
+    // Heading
+    const hMatch = line.match(/^(#{1,3})\s+(.+)/)
+    if (hMatch) {
+      const level = hMatch[1].length
+      const tag = `h${level + 2}` // h3-h5 so it doesn't clash with page h1
+      blocks.push(<div key={i} dangerouslySetInnerHTML={{ __html: `<${tag} style="font-weight:700;margin:14px 0 6px;color:var(--text-primary)">${inlineFormat(hMatch[2])}</${tag}>` }} />)
+      i++
+      continue
+    }
+
+    // HR
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
+      blocks.push(<hr key={i} style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '12px 0' }} />)
+      i++
+      continue
+    }
+
+    // Table: detect header row followed by separator
+    if (i + 1 < lines.length && /^\|/.test(line) && /^\|[-:\s|]+\|/.test(lines[i + 1])) {
+      const tableLines = []
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tableLines.push(lines[i])
+        i++
+      }
+      const parseRow = (r) => r.split('|').slice(1, -1).map(c => c.trim())
+      const headers = parseRow(tableLines[0])
+      const rows = tableLines.slice(2).map(parseRow)
+      blocks.push(
+        <div key={i} style={{ overflowX: 'auto', margin: '12px 0' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead>
+              <tr>
+                {headers.map((h, hi) => (
+                  <th key={hi} dangerouslySetInnerHTML={{ __html: inlineFormat(h) }} style={{ padding: '8px 12px', textAlign: 'left', background: 'rgba(168,85,247,0.15)', color: 'var(--text-primary)', fontWeight: 700, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }} />
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  {row.map((cell, ci) => (
+                    <td key={ci} dangerouslySetInnerHTML={{ __html: inlineFormat(cell) }} style={{ padding: '7px 12px', color: 'var(--text-secondary)', verticalAlign: 'top' }} />
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+      continue
+    }
+
+    // Bullet list item
+    const liMatch = line.match(/^[\s]*[-*+]\s+(.+)/)
+    if (liMatch) {
+      const items = []
+      while (i < lines.length && /^[\s]*[-*+]\s+/.test(lines[i])) {
+        const m = lines[i].match(/^[\s]*[-*+]\s+(.+)/)
+        items.push(m ? m[1] : lines[i])
+        i++
+      }
+      blocks.push(
+        <ul key={i} style={{ paddingLeft: '20px', margin: '8px 0', listStyleType: 'disc' }}>
+          {items.map((item, ii) => (
+            <li key={ii} dangerouslySetInnerHTML={{ __html: inlineFormat(item) }} style={{ color: 'var(--text-secondary)', margin: '4px 0', lineHeight: 1.6 }} />
+          ))}
+        </ul>
+      )
+      continue
+    }
+
+    // Numbered list
+    const nlMatch = line.match(/^[\s]*\d+\.\s+(.+)/)
+    if (nlMatch) {
+      const items = []
+      while (i < lines.length && /^[\s]*\d+\.\s+/.test(lines[i])) {
+        const m = lines[i].match(/^[\s]*\d+\.\s+(.+)/)
+        items.push(m ? m[1] : lines[i])
+        i++
+      }
+      blocks.push(
+        <ol key={i} style={{ paddingLeft: '20px', margin: '8px 0' }}>
+          {items.map((item, ii) => (
+            <li key={ii} dangerouslySetInnerHTML={{ __html: inlineFormat(item) }} style={{ color: 'var(--text-secondary)', margin: '4px 0', lineHeight: 1.6 }} />
+          ))}
+        </ol>
+      )
+      continue
+    }
+
+    // Blank line
+    if (line.trim() === '') {
+      blocks.push(<div key={i} style={{ height: '8px' }} />)
+      i++
+      continue
+    }
+
+    // Paragraph
+    blocks.push(
+      <p key={i} dangerouslySetInnerHTML={{ __html: inlineFormat(line) }} style={{ color: 'var(--text-secondary)', lineHeight: 1.7, margin: '4px 0' }} />
+    )
+    i++
+  }
+  return <div style={{ fontSize: '14px' }}>{blocks}</div>
+}
+
 // 3D Purchase Flow Visualization
 function PurchaseFlowVisualization({ storeId, result, loading }) {
   const groupRef = useRef()
@@ -248,44 +374,31 @@ export default function AiPurchasePage() {
     setLoading(true)
     setShowVisualization(true)
     try {
-      const request = {
-        jsonrpc: '2.0',
-        id: Date.now(),
-        method: 'tools/call',
-        params: {
-          name: 'purchase',
-          arguments: {
-            buyer_id: 'demo-buyer',
-            session_id: 'demo-session',
-            sku: 'SKU-DUMMY',
-            product_id: 'PROD-DUMMY',
-            quantity: 1,
-            idempotency_key: crypto.randomUUID(),
-          },
-        },
-      }
-
-      const resp = await fetch(`/mcp/${storeId}`, {
+      const resp = await fetch('/api/ai/purchase', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(request),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          store_id: storeId,
+          buyer_id: 'demo-buyer',
+        }),
       })
 
       const text = await resp.text()
       let data
-      try {
-        data = JSON.parse(text)
-      } catch {
-        data = { error: { message: text || `HTTP ${resp.status}` } }
+      try { data = JSON.parse(text) } catch { data = { error: text || `HTTP ${resp.status}` } }
+
+      if (!resp.ok) {
+        showToast(`Error: ${data.error || resp.statusText}`, 'error')
+        setResult({ error: data.error || resp.statusText })
+        return
       }
+
       setResult(data)
-      if (data.error) {
-        showToast(`MCP error: ${data.error.message}`, 'error')
+      if (data.llm_decision === 'no_purchase') {
+        showToast('LLM declined to purchase', 'info')
       } else {
-        showToast('MCP response received', 'success')
+        showToast('AI purchase attempt processed', 'success')
       }
     } catch (e) {
       console.error(e)
@@ -381,37 +494,95 @@ export default function AiPurchasePage() {
 
           {suggestion && (
             <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(5,5,16,0.4)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-              <strong style={{ color: 'var(--accent-purple)' }}>AI Suggestion:</strong>
-              <p style={{ marginTop: '12px', whiteSpace: 'pre-wrap', color: 'var(--text-secondary)' }}>{suggestion}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                <strong style={{ color: 'var(--accent-purple)', fontSize: '13px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>AI Suggestion</strong>
+              </div>
+              <MarkdownView text={suggestion} />
             </div>
           )}
 
-          {result && (
-            <div style={{ marginTop: '24px', padding: '24px', borderRadius: '16px', background: result.result?.Allowed
-              ? 'rgba(16,185,129,0.1)'
-              : 'rgba(239,68,68,0.1)',
-              border: `1px solid ${result.result?.Allowed ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-              color: result.result?.Allowed ? 'var(--accent-green)' : 'var(--accent-red)',
-            }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {result.result?.Allowed ? (
-                  <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
-                    Purchase Allowed
-                  </>
-                ) : (
-                  <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
-                    Purchase Blocked
-                  </>
+          {result && (() => {
+            // Handle LLM-declined case
+            if (result.llm_decision === 'no_purchase') {
+              return (
+                <div style={{ marginTop: '24px', padding: '24px', borderRadius: '16px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: '16px', color: '#f59e0b' }}>LLM Declined Purchase</div>
+                  </div>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6 }}>{result.llm_reply}</p>
+                  <button className="btn btn-secondary" style={{ marginTop: '20px', width: '100%' }} onClick={reset}>Try Another</button>
+                </div>
+              )
+            }
+
+            // Handle agentic purchase attempt
+            const r = result.result || result || {}
+            const allowed = r.allowed ?? r.Allowed
+            const reason = r.reason ?? r.Reason ?? ''
+            const status = r.status ?? r.Status ?? ''
+            const orderId = r.order_id ?? r.OrderID ?? ''
+            const ruleFired = r.rule_fired ?? r.RuleFired ?? ''
+            const llmArgs = result.llm_args || {}
+
+            return (
+              <div style={{ marginTop: '24px', padding: '24px', borderRadius: '16px', background: allowed ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${allowed ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}` }}>
+                {/* Status badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: allowed ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {allowed ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '16px', color: allowed ? '#10b981' : '#ef4444' }}>
+                      {allowed ? 'Purchase Approved' : 'Purchase Blocked'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{status}</div>
+                  </div>
+                </div>
+
+                {/* LLM decision */}
+                {(llmArgs.sku || llmArgs.quantity) && (
+                  <div style={{ padding: '10px 12px', background: 'rgba(168,85,247,0.08)', borderRadius: '8px', marginBottom: '8px', fontSize: '13px', border: '1px solid rgba(168,85,247,0.2)' }}>
+                    <span style={{ color: 'var(--accent-purple)', fontWeight: 600 }}>🤖 LLM decided: </span>
+                    <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                      buy {llmArgs.quantity}× <strong style={{ color: 'var(--text-primary)' }}>{llmArgs.sku}</strong>
+                    </span>
+                  </div>
                 )}
-              </h3>
-              <pre style={{ fontSize: '12px', maxHeight: '200px', overflowY: 'auto', whiteSpace: 'pre-wrap', color: 'var(--text-secondary)' }}>
-{JSON.stringify(result, null, 2)}
-              </pre>
-              <button className="btn btn-secondary" style={{ marginTop: '16px', width: '100%' }} onClick={reset}>Try Another</button>
-            </div>
-          )}
+
+                {/* Details */}
+                <div style={{ display: 'grid', gap: '8px', fontSize: '13px' }}>
+                  {reason && (
+                    <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px' }}>
+                      <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>Reason:</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>{reason}</span>
+                    </div>
+                  )}
+                  {ruleFired && ruleFired !== 'none' && (
+                    <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px' }}>
+                      <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>Rule fired:</span>
+                      <span style={{ fontFamily: 'monospace', color: '#f59e0b', fontSize: '12px' }}>{ruleFired}</span>
+                    </div>
+                  )}
+                  {orderId && (
+                    <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', background: 'rgba(16,185,129,0.08)', borderRadius: '8px' }}>
+                      <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>Order ID:</span>
+                      <span style={{ fontFamily: 'monospace', color: '#10b981', fontSize: '12px' }}>{orderId}</span>
+                    </div>
+                  )}
+                </div>
+
+                <button className="btn btn-secondary" style={{ marginTop: '20px', width: '100%' }} onClick={reset}>Try Another</button>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Right Panel - 3D Visualization */}
