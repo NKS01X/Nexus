@@ -27,7 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := logger.New(cfg.Log.Level)
+	log := logger.New(cfg.Log.Level, cfg.Log.OutputPath)
 	slog.SetDefault(log)
 
 	db, err := repository.NewDB(cfg.Database.DSN)

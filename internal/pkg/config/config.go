@@ -105,7 +105,8 @@ type PortalConfig struct {
 
 // LogConfig holds logging configuration.
 type LogConfig struct {
-    Level string `yaml:"level"`
+    Level      string `yaml:"level"`
+    OutputPath string `yaml:"output_path"`
 }
 
 // GroqConfig holds Groq LLM client configuration.
