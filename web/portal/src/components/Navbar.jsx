@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import nexusLogo from '../assets/nexus_logo.png'
 
 export default function Navbar() {
   const location = useLocation()
@@ -16,8 +17,8 @@ export default function Navbar() {
     <nav ref={navRef} className={`navbar ${scrolled ? 'scrolled' : ''}`}>
       <div className="navbar-inner">
         <Link to="/" className="logo">
-          <div className="logo-icon">A</div>
-          <span className="logo-text">Aegis</span>
+          <img src={nexusLogo} alt="Nexus" className="logo-img" />
+          <span className="logo-text">Nexus</span>
         </Link>
         <div className="nav-links" aria-label="Primary navigation">
           <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}>

@@ -23,32 +23,35 @@ type CreateOrderRequest struct {
 }
 
 // CreateOrderResponse holds the response from creating a Razorpay order.
+// JSON tags match the actual Razorpay API response field names.
 type CreateOrderResponse struct {
-	OrderID     string
-	AmountPaisa int64
-	Currency    string
-	Status      string
-	CheckoutURL string
+	OrderID     string `json:"id"`
+	AmountPaisa int64  `json:"amount"`
+	Currency    string `json:"currency"`
+	Status      string `json:"status"`
+	CheckoutURL string `json:"checkout_url,omitempty"`
 }
 
 // CapturePaymentResponse holds the response from capturing a payment.
+// JSON tags match the actual Razorpay API response field names.
 type CapturePaymentResponse struct {
-	PaymentID   string
-	OrderID     string
-	AmountPaisa int64
-	Status      string
+	PaymentID   string `json:"id"`
+	OrderID     string `json:"order_id"`
+	AmountPaisa int64  `json:"amount"`
+	Status      string `json:"status"`
 }
 
 // PaymentResponse holds payment details from Razorpay.
+// JSON tags match the actual Razorpay API response field names.
 type PaymentResponse struct {
-	PaymentID      string
-	OrderID        string
-	AmountPaisa    int64
-	Currency       string
-	Status         string
-	Method         string
-	Captured       bool
-	RefundedAmount int64
+	PaymentID      string `json:"id"`
+	OrderID        string `json:"order_id"`
+	AmountPaisa    int64  `json:"amount"`
+	Currency       string `json:"currency"`
+	Status         string `json:"status"`
+	Method         string `json:"method"`
+	Captured       bool   `json:"captured"`
+	RefundedAmount int64  `json:"amount_refunded"`
 }
 
 // CreateRefundRequest holds parameters for creating a refund.
@@ -60,8 +63,9 @@ type CreateRefundRequest struct {
 }
 
 // CreateRefundResponse holds the response from creating a refund.
+// JSON tags match the actual Razorpay API response field names.
 type CreateRefundResponse struct {
-	RefundID    string
-	AmountPaisa int64
-	Status      string
+	RefundID    string `json:"id"`
+	AmountPaisa int64  `json:"amount"`
+	Status      string `json:"status"`
 }

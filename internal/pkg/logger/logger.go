@@ -6,7 +6,7 @@ import (
 )
 
 // New creates a new structured logger.
-func New(level string) *slog.Logger {
+func New(level string, outputPath string) *slog.Logger {
 	var lvl slog.Level
 	switch level {
 	case "debug":
@@ -33,5 +33,16 @@ func New(level string) *slog.Logger {
 		},
 	}
 
-	return slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	var out *os.File
+	if outputPath != "" {
+		var err error
+		out, err = os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			out = os.Stdout
+		}
+	} else {
+		out = os.Stdout
+	}
+
+	return slog.New(slog.NewJSONHandler(out, opts))
 }
