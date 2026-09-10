@@ -1,123 +1,108 @@
 <div align="center">
   <br />
-  <img src="assets/nexus_logo.png" alt="Nexus Logo" width="120" />
+  <img src="assets/nexus_logo.png" alt="Nexus Logo" width="110" />
   <h1>Nexus</h1>
-  <p><b>Enterprise-Grade Agentic Commerce Infrastructure for Merchants</b></p>
-  <p><i>Razorpay Buildathon 2026 — Track 01: AI Growth & Agentic Commerce</i></p>
+  <p><b>Agentic Commerce Infrastructure for Merchants</b></p>
   <br />
 
   [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
   [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-4169E1?style=flat&logo=postgresql)](https://www.postgresql.org/)
   [![React](https://img.shields.io/badge/React-18+-61DAFB?style=flat&logo=react)](https://reactjs.org/)
   [![MCP](https://img.shields.io/badge/Protocol-MCP-purple?style=flat)](https://modelcontextprotocol.io/)
-  [![Podman](https://img.shields.io/badge/Container-Podman-892CA0?style=flat&logo=podman)](https://podman.io/)
   [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 </div>
 
 ---
 
-## 🎥 Platform Overview
-
-*(Watch the Nexus platform in action, featuring the 3D control plane, multi-tenant merchant onboarding, the deterministic policy engine, human review queue, and automated Red Team security lab.)*
+## Demo
 
 ![Nexus Platform Demo](assets/demo.webp)
 
 ---
 
-## 💡 The Problem
+## The Problem
 
-As AI shopping agents evolve from simple search assistants into autonomous purchasing delegates, merchants face three critical infrastructure vulnerabilities:
+As AI shopping agents evolve from search assistants into autonomous purchasing delegates, merchants face three infrastructure gaps:
 
-1. **Unbounded Financial Risk:** LLMs can be manipulated via prompt injection or context drift to place unauthorized, high-value transactions (e.g., ordering 500 units of a $10,000 item).
-2. **Missing Universal Standard:** Traditional e-commerce platforms lack a standardized, machine-readable protocol for AI agents to discover catalogs, check inventory, and execute multi-step checkouts.
-3. **Zero Compliance & Auditability:** Non-deterministic LLM actions leave merchants without cryptographically verifiably audit trails for dispute resolution, compliance, or fraud prevention.
+1. **Unbounded financial risk.** LLMs can be manipulated via prompt injection or context drift to place unauthorized, high-value transactions.
+2. **No universal standard.** Traditional e-commerce platforms have no machine-readable protocol for AI agents to discover catalogs, check inventory, and execute multi-step checkouts.
+3. **Zero auditability.** Non-deterministic LLM actions leave merchants without cryptographically verifiable audit trails for dispute resolution or compliance.
 
 ---
 
-## ⚡ The Solution: Nexus
+## What Nexus Does
 
-**Nexus** is a high-performance, self-hosted commerce gateway that renders any merchant natively transactable by AI agents end-to-end.
+Nexus is a self-hosted commerce gateway that makes any merchant natively transactable by AI agents, end-to-end.
 
-By combining an open **Model Context Protocol (MCP)** interface with a zero-LLM **Aegis Policy Engine**, Nexus guarantees that **every monetary action is explainable, bounded, and cryptographically gated**.
+It combines an open **Model Context Protocol (MCP)** interface with a zero-LLM **Aegis Policy Engine** so that every monetary action is explainable, bounded, and cryptographically gated.
 
 ```
-AI Agent / LLM ──► Merchant MCP Server ──► Aegis Policy Gateway ──► Razorpay API ──► Audit Ledger
-                                                   │
-                                            (Policy Violation)
-                                                   ▼
-                                         Human Approval Queue
+AI Agent ──► Merchant MCP Server ──► Aegis Policy Gateway ──► Razorpay API ──► Audit Ledger
+                                              │
+                                       (Policy Violation)
+                                              ▼
+                                    Human Approval Queue
 ```
 
-### Key Engineering Guarantees:
-- ⚡ **Zero LLM in the Enforcement Path:** Policy evaluation is compiled Go code with sub-millisecond latency. Zero hallucination risk during payment capture.
-- 🛡️ **Bounded Execution:** Enforces session spend caps, per-SKU quantity limits, rate limiting (velocity), category allowlists, and regional geo-fencing.
-- ⛓️ **Cryptographic Audit Chain:** Hash-chained append-only ledger verifies log integrity against tampering.
-- 👨‍⚖️ **Graceful Human-in-the-Loop:** Blocked anomalous transactions do not drop; they seamlessly route to a merchant review queue for manual override.
+**Engineering guarantees:**
+
+- **Zero LLM in the enforcement path.** Policy evaluation is compiled Go with sub-millisecond latency. No hallucination risk during payment capture.
+- **Bounded execution.** Enforces session spend caps, per-SKU quantity limits, velocity rate limiting, category allowlists, and regional geo-fencing.
+- **Cryptographic audit chain.** SHA-256 hash-chained append-only ledger verifies log integrity against tampering.
+- **Graceful human-in-the-loop.** Blocked transactions do not drop silently; they route to a merchant review queue for manual override.
 
 ---
 
-## 🎯 Track 01 Alignment Checklist
+## MCP Tools
 
-| Requirement | Implementation in Nexus | Verification |
-|---|---|---|
-| **Make merchant transactable by AI buyer** | Exposes standardized MCP endpoints for product search, availability checking, and instant checkout. | `/mcp/{store_id}` tool handlers |
-| **Explainable monetary actions** | Every policy decision outputs detailed rationale, rule IDs, and parameter evaluation states. | `policy_decision.rule_fired` in audit log |
-| **Bounded execution** | Configurable spend caps, per-SKU quotas, rate limits, allowlists, and geo-fencing. | `internal/app/service/policy_engine.go` |
-| **Gated transactions & audit trail** | SHA-256 hash-chained immutable audit log with cryptographic chain verification. | `internal/app/service/audit_service.go` |
-| **One failure handled gracefully** | Blocked transactions generate a pending request in the Human Approval Queue instead of failing silently. | `/approvals` dashboard & backend API |
+The Merchant MCP Server is the protocol layer between external AI agents and the merchant's payment infrastructure.
 
----
-
-## 🛠️ Exposed MCP Tools
-
-The **Merchant MCP Server** acts as the universal protocol layer between external AI agents and the merchant's payment infrastructure:
-
-| Tool Name | Description | Key Parameters |
+| Tool | Description | Parameters |
 | :--- | :--- | :--- |
-| `search_products` | Search catalog with structured price & category filters | `query`, `category`, `min_price`, `max_price` |
-| `get_product` | Fetch detailed SKU specifications and inventory availability | `product_id` |
+| `search_products` | Search catalog with price and category filters | `query`, `category`, `min_price`, `max_price` |
+| `get_product` | Fetch SKU specs and inventory | `product_id` |
 | `check_availability` | Real-time stock reservation check | `sku` |
-| `purchase` | Submit purchase request to Aegis Policy Engine | `buyer_id`, `session_id`, `sku`, `quantity`, `idempotency_key` |
-| `get_order_status` | Query status of pending, approved, or completed order | `order_id` |
+| `purchase` | Submit a purchase request to the policy engine | `buyer_id`, `session_id`, `sku`, `quantity`, `idempotency_key` |
+| `get_order_status` | Query status of a pending or completed order | `order_id` |
 
 ---
 
-## 🏗️ Architecture & Core Components
+## Architecture
 
 ```mermaid
 flowchart TD
     subgraph External["External Clients"]
-        A["🤖 AI Agent / LLM\n(Claude, GPT, etc.)"]
-        B["🛒 Demo Buyer CLI"]
+        A["AI Agent / LLM"]
+        B["Demo Buyer CLI"]
     end
 
     subgraph MCP["Merchant MCP Server :8082"]
-        C["JSON-RPC Handler\n(MCP Protocol)"]
-        D["Tool Registry\nsearch_products · get_product\ncheck_availability · purchase\nget_order_status"]
+        C["JSON-RPC Handler (MCP Protocol)"]
+        D["Tool Registry\nsearch_products · get_product\ncheck_availability · purchase · get_order_status"]
     end
 
     subgraph Aegis["Aegis Policy Gateway :8081"]
-        E["Policy Engine\n(Pure Go — Zero LLM)"]
-        F["Rule Set\nSpend Cap · SKU Quota\nVelocity · Allowlist · Geo"]
+        E["Policy Engine (Pure Go, Zero LLM)"]
+        F["Rule Set\nSpend Cap · SKU Quota · Velocity · Allowlist · Geo"]
         G["Idempotency Store"]
     end
 
     subgraph Storage["PostgreSQL"]
-        H[("Catalog\n& Orders")]
-        I[("Audit Ledger\nHash-Chained")]
-        J[("Policy Config\n& Sessions")]
+        H[("Catalog & Orders")]
+        I[("Audit Ledger (Hash-Chained)")]
+        J[("Policy Config & Sessions")]
     end
 
     subgraph Razorpay["Razorpay MCP"]
-        K["create_order\ncapture_payment"]
+        K["create_order / capture_payment"]
     end
 
     subgraph Oversight["Human Oversight :8083"]
-        L["Approval Queue\nAPI"]
+        L["Approval Queue API"]
     end
 
     subgraph Portal["Admin Portal :8084"]
-        M["React 18 SPA\nMerchant Mgmt · Review Queue\nRed Team Lab · AI Checkout"]
+        M["React 18 SPA\nMerchant Mgmt · Review Queue · Red Team Lab · AI Checkout"]
     end
 
     A -->|"MCP JSON-RPC"| C
@@ -129,8 +114,8 @@ flowchart TD
     F -->|"reads"| J
     E --> G
     G -->|"dedup check"| H
-    F -->|"✅ ALLOWED"| K
-    F -->|"🚫 BLOCKED"| L
+    F -->|"ALLOWED"| K
+    F -->|"BLOCKED"| L
     K -->|"captures payment"| H
     E -->|"appends log"| I
     L -->|"holds pending"| H
@@ -138,115 +123,108 @@ flowchart TD
     M -->|"REST API"| L
 ```
 
-Nexus operates as a cohesive suite of microservices:
+**Services:**
 
-1. **Merchant MCP Server (`:8082`):** Handles external LLM JSON-RPC connections, validates schemas, and translates tool calls.
-2. **Aegis Policy Gateway (`:8081`):** Evaluates deterministic business rules against PostgreSQL state before authorizing Razorpay charges.
-3. **Human Approval Service (`:8083`):** Receives policy-blocked transactions, holds them in state, and exposes resolution endpoints.
-4. **Admin Portal & Portal Server (`:8084`):** React 18 dashboard offering merchant onboarding, live policy management, review queue, and security test lab.
-5. **Razorpay Integration Engine:** Executes payment intent creation and capture using official Razorpay APIs.
+1. **Merchant MCP Server (`:8082`)** — Handles LLM JSON-RPC connections, validates schemas, translates tool calls.
+2. **Aegis Policy Gateway (`:8081`)** — Evaluates deterministic rules against PostgreSQL state before authorizing charges.
+3. **Human Approval Service (`:8083`)** — Holds policy-blocked transactions and exposes resolution endpoints.
+4. **Admin Portal (`:8084`)** — React 18 dashboard for merchant onboarding, policy management, review queue, and security lab.
+5. **Razorpay Integration** — Creates and captures payments via official Razorpay APIs.
 
 ---
 
-## 🚨 Automated Security Test Lab (Red Team Suite)
+## Red Team Suite
 
-Nexus includes an automated Red Team simulation suite to validate policy enforcement against malicious or prompt-injected AI agents:
+Nexus ships an automated attack simulation suite to validate policy enforcement against prompt-injected or malicious agents.
 
 ```bash
 go run cmd/redteam/main.go config.yaml
 ```
 
-| Attack Vector | Enforcement Layer | Result |
+| Attack | Enforcement Layer | Outcome |
 |---|---|---|
-| **Excessive Quantity Injection** | Per-SKU Quota Rule | **Blocked** → Sent to Approval Queue |
-| **Price Tampering Attack** | Catalog Truth Verification | **Blocked** → Price mismatch rejected |
-| **Velocity Spam Attack** | Sliding-window Rate Limiter | **Blocked** → HTTP 429 / Rate Capped |
-| **Category Escape** | Category Allowlist Rule | **Blocked** → Unauthorized category denied |
-| **Geo-fencing Bypass** | Pincode / Country Rule | **Blocked** → Regional restriction applied |
-| **Replay Attack** | Idempotency Key Store | **Deduplicated** → Cached state returned |
-| **Audit Chain Tampering** | Cryptographic Hash Chain | **Detected** → Chain validation alert fired |
+| Excessive quantity injection | Per-SKU quota rule | Blocked → routed to approval queue |
+| Price tampering | Catalog truth verification | Blocked → price mismatch rejected |
+| Velocity spam | Sliding-window rate limiter | Blocked → HTTP 429 |
+| Category escape | Category allowlist | Blocked → unauthorized category denied |
+| Geo-fencing bypass | Pincode / country rule | Blocked → regional restriction applied |
+| Replay attack | Idempotency key store | Deduplicated → cached state returned |
+| Audit chain tampering | Cryptographic hash chain | Detected → chain validation alert |
 
 ---
 
-## 🚀 Quick Start Guide
+## Quick Start
 
-### Prerequisites
-- **Go 1.22+**
-- **PostgreSQL 15+** (or Podman / Docker)
-- **Node.js 20+**
+**Prerequisites:** Go 1.22+, PostgreSQL 15+ (or Podman/Docker), Node.js 20+
 
----
+### Option A — Podman (recommended)
 
-### Option A: Single-Pod Deployment via Podman (Recommended)
-
-Run the entire Nexus platform (PostgreSQL + All Services + Web Portal) in a single unified Podman pod:
+Runs PostgreSQL + all services in a single pod.
 
 ```bash
-# 1. Clone repository
 git clone https://github.com/razorpay/nexus.git
 cd nexus
 
-# 2. Copy environment secrets
 cp .env.example .env
-# Edit .env to add RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, and GROQ_API_KEY
+# Add RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, and GROQ_API_KEY to .env
 
-# 3. Launch Podman Pod
 make podman-up
 ```
 
-*To stop the pod:*
 ```bash
-make podman-down
+make podman-down   # to stop
 ```
 
----
-
-### Option B: Local Native Development
+### Option B — Local development
 
 ```bash
-# 1. Configure environment
 cp config.yaml.example config.yaml
+# Fill in credentials
 
-# 2. Run automated demo harness (starts DB, compiles binaries, seeds catalog)
-./scripts/demo.sh
+./scripts/demo.sh   # builds, migrates, seeds, and starts all services
 ```
 
 ---
 
-## 🌐 Platform Portals & Endpoints
+## Endpoints
 
-Once running, access the platform endpoints:
+Once running:
 
-- 📊 **Merchant Dashboard:** [http://localhost:8084](http://localhost:8084) *(Admin Key: `nexus_admin_default`)*
-- 🏬 **Store Management:** [http://localhost:8084/merchants](http://localhost:8084/merchants)
-- 👨‍⚖️ **Human Approval Queue:** [http://localhost:8084/approvals](http://localhost:8084/approvals)
-- 🧪 **Security Test Lab:** [http://localhost:8084/redteam](http://localhost:8084/redteam)
-- 🤖 **AI Checkout Simulator:** [http://localhost:8084/ai-purchase](http://localhost:8084/ai-purchase)
-- 🎨 **3D Aegis Control Plane:** [http://localhost:8084/aegis-demo](http://localhost:8084/aegis-demo)
-- 🔌 **MCP Merchant Endpoint:** `http://localhost:8082/mcp/{store_id}`
+| Service | URL | Auth |
+|---|---|---|
+| Merchant Dashboard | http://localhost:8084 | `nexus_admin_default` |
+| Store Management | http://localhost:8084/merchants | same |
+| Human Approval Queue | http://localhost:8084/approvals | same |
+| Security Test Lab | http://localhost:8084/redteam | same |
+| AI Checkout Simulator | http://localhost:8084/ai-purchase | none |
+| 3D Aegis Control Plane | http://localhost:8084/aegis-demo | none |
+| MCP Endpoint | `http://localhost:8082/mcp/{store_id}` | store API key |
 
 ---
 
-## 📁 Repository Structure
+## Repository Layout
 
 ```
 cmd/
-  ├── aegis-gateway/     # Policy engine gateway entrypoint
-  ├── merchant-mcp/      # Model Context Protocol server
-  ├── portal/            # Portal backend & static web server
-  ├── redteam/           # Security attack simulation suite
-  ├── demo-buyer/        # AI purchase scenario harness
-  └── seed-catalog/      # Product catalog seeder
+  aegis-gateway/     policy engine entrypoint
+  merchant-mcp/      MCP server
+  portal/            portal backend + static file server
+  redteam/           attack simulation suite
+  demo-buyer/        AI purchase scenario harness
+  seed-catalog/      product catalog seeder
 internal/
-  ├── app/
-  │   ├── service/       # Business logic (Policy, Audit, Approval, MCP)
-  │   ├── repository/    # PostgreSQL data access layer
-  │   └── model/         # Domain entities & strict schemas
-  └── pkg/               # Shared loggers, config parsers, clients
-migrations/              # Versioned SQL database migrations
-web/portal/              # React 18 + Three.js + Vite merchant portal
-scripts/                 # Podman, deployment, and testing automation
+  app/
+    service/         business logic (policy, audit, approval, MCP)
+    repository/      PostgreSQL data access
+    model/           domain entities and schemas
+  pkg/               shared logger, config, clients
+migrations/          versioned SQL migrations
+web/portal/          React 18 + Three.js + Vite frontend
+scripts/             deployment and automation scripts
 ```
 
 ---
 
+## License
+
+MIT
