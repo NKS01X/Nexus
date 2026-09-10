@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/razorpay/aegis/internal/app/model"
 	"github.com/razorpay/aegis/internal/app/repository"
 	"github.com/razorpay/aegis/internal/app/service"
 	"github.com/razorpay/aegis/internal/pkg/config"
@@ -27,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := logger.New(cfg.Log.Level)
+	log := logger.New(cfg.Log.Level, cfg.Log.OutputPath)
 	slog.SetDefault(log)
 
 	db, err := repository.NewDB(cfg.Database.DSN)
@@ -47,6 +48,29 @@ func main() {
 	orderRepo := repository.NewOrderPG(db)
 	auditRepo := repository.NewAuditPG(db)
 	queueRepo := repository.NewApprovalQueuePG(db)
+
+	// Sync policy config from config.yaml to database
+	ctx := context.Background()
+	modelPolicyCfg := &model.PolicyConfig{
+		SpendCapPaisa:     cfg.Policy.SpendCapPaisa,
+		PerSKUCap:         cfg.Policy.PerSKUCap,
+		VelocityCap:       model.VelocityLimit{MaxRequests: cfg.Policy.VelocityCap.MaxRequests, WindowSeconds: cfg.Policy.VelocityCap.WindowSeconds},
+		AllowedCategories: cfg.Policy.AllowedCategories,
+		BlockedSKUs:       cfg.Policy.BlockedSKUs,
+		GeoRules:          make([]model.GeoRule, len(cfg.Policy.GeoRules)),
+	}
+	for i, gr := range cfg.Policy.GeoRules {
+		modelPolicyCfg.GeoRules[i] = model.GeoRule{
+			Country:  gr.Country,
+			Allowed:  gr.Allowed,
+			Pincodes: gr.Pincodes,
+		}
+	}
+	if err := policyRepo.UpdatePolicyConfig(ctx, modelPolicyCfg); err != nil {
+		log.Error("update policy config", "error", err)
+		os.Exit(1)
+	}
+	log.Info("policy config synced from config.yaml")
 
 	// Initialize Razorpay MCP client — fall back to mock when binary path is unset (local dev).
 	var razorpayClient service.RazorpayMCPClient

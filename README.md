@@ -1,6 +1,7 @@
 <div align="center">
   <br />
-  <h1>🚀 Nexus</h1>
+  <img src="assets/nexus_logo.png" alt="Nexus Logo" width="120" />
+  <h1>Nexus</h1>
   <p><b>Enterprise-Grade Agentic Commerce Infrastructure for Merchants</b></p>
   <p><i>Razorpay Buildathon 2026 — Track 01: AI Growth & Agentic Commerce</i></p>
   <br />
@@ -83,7 +84,59 @@ The **Merchant MCP Server** acts as the universal protocol layer between externa
 
 ## 🏗️ Architecture & Core Components
 
-![Nexus System Architecture](assets/architecture.png)
+```mermaid
+flowchart TD
+    subgraph External["External Clients"]
+        A["🤖 AI Agent / LLM\n(Claude, GPT, etc.)"]
+        B["🛒 Demo Buyer CLI"]
+    end
+
+    subgraph MCP["Merchant MCP Server :8082"]
+        C["JSON-RPC Handler\n(MCP Protocol)"]
+        D["Tool Registry\nsearch_products · get_product\ncheck_availability · purchase\nget_order_status"]
+    end
+
+    subgraph Aegis["Aegis Policy Gateway :8081"]
+        E["Policy Engine\n(Pure Go — Zero LLM)"]
+        F["Rule Set\nSpend Cap · SKU Quota\nVelocity · Allowlist · Geo"]
+        G["Idempotency Store"]
+    end
+
+    subgraph Storage["PostgreSQL"]
+        H[("Catalog\n& Orders")]
+        I[("Audit Ledger\nHash-Chained")]
+        J[("Policy Config\n& Sessions")]
+    end
+
+    subgraph Razorpay["Razorpay MCP"]
+        K["create_order\ncapture_payment"]
+    end
+
+    subgraph Oversight["Human Oversight :8083"]
+        L["Approval Queue\nAPI"]
+    end
+
+    subgraph Portal["Admin Portal :8084"]
+        M["React 18 SPA\nMerchant Mgmt · Review Queue\nRed Team Lab · AI Checkout"]
+    end
+
+    A -->|"MCP JSON-RPC"| C
+    B -->|"MCP JSON-RPC"| C
+    C --> D
+    D -->|"purchase request"| E
+    E --> F
+    F -->|"reads/writes"| H
+    F -->|"reads"| J
+    E --> G
+    G -->|"dedup check"| H
+    F -->|"✅ ALLOWED"| K
+    F -->|"🚫 BLOCKED"| L
+    K -->|"captures payment"| H
+    E -->|"appends log"| I
+    L -->|"holds pending"| H
+    M -->|"REST API"| Aegis
+    M -->|"REST API"| L
+```
 
 Nexus operates as a cohesive suite of microservices:
 
